@@ -1,0 +1,12 @@
+import type { ChatMessage } from "../types";
+import MessageBubble from "./MessageBubble";
+
+export default function TranscriptViewer({ messages }: { messages: ChatMessage[] }) {
+  return (
+    <div className="max-h-[60vh] space-y-4 overflow-y-auto rounded-xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
+      {messages.map((m) => (
+        <MessageBubble key={m.id} message={m} studentLabel="Student" />
+      ))}
+    </div>
+  );
+}
