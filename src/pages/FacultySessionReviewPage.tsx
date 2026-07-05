@@ -5,12 +5,12 @@ import TranscriptViewer from "../components/TranscriptViewer";
 import FeedbackScoreCard from "../components/FeedbackScoreCard";
 import RubricScoreTable from "../components/RubricScoreTable";
 import LoadingSpinner from "../components/LoadingSpinner";
-import { getSession, saveFacultyReview } from "../api/client";
-import type { SessionRecord } from "../types";
+import { getFacultySession, saveFacultyReview } from "../api/client";
+import type { FacultySessionDetail, PromptTrace } from "../types";
 
 export default function FacultySessionReviewPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
-  const [session, setSession] = useState<SessionRecord | null>(null);
+  const [session, setSession] = useState<FacultySessionDetail | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [comment, setComment] = useState("");
   const [saving, setSaving] = useState(false);
@@ -18,26 +18,33 @@ export default function FacultySessionReviewPage() {
 
   useEffect(() => {
     if (!sessionId) return;
-    getSession(sessionId).then((s) => {
-      if (s) {
+    getFacultySession(sessionId)
+      .then((s) => {
         setSession(s);
         setComment(s.faculty_comment);
-      } else {
-        setNotFound(true);
-      }
-    });
+      })
+      .catch(() => setNotFound(true));
   }, [sessionId]);
 
   const handleSave = async (markReviewed: boolean) => {
     if (!sessionId) return;
     setSaving(true);
     setSaveNote(null);
-    const updated = await saveFacultyReview(sessionId, comment, markReviewed);
-    if (updated) {
-      setSession(updated);
+    try {
+      await saveFacultyReview(sessionId, {
+        comments: comment,
+        adjusted_score: null,
+        review_status: markReviewed ? "reviewed" : "pending",
+      });
+      const refreshed = await getFacultySession(sessionId);
+      setSession(refreshed);
+      setComment(refreshed.faculty_comment);
       setSaveNote(markReviewed ? "Session marked as reviewed." : "Comment saved.");
+    } catch {
+      setSaveNote("Could not save. Please try again.");
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
   };
 
   if (notFound) {
@@ -64,6 +71,7 @@ export default function FacultySessionReviewPage() {
   }
 
   const fb = session.evaluation;
+  const isReviewed = session.status === "reviewed" || session.review_status === "reviewed";
 
   return (
     <Layout>
@@ -86,8 +94,8 @@ export default function FacultySessionReviewPage() {
           <div>
             <p className="text-slate-500">Date completed</p>
             <p className="font-medium text-slate-800">
-              {session.completed_at
-                ? new Date(session.completed_at).toLocaleDateString("en-US", {
+              {session.ended_at
+                ? new Date(session.ended_at).toLocaleDateString("en-US", {
                     year: "numeric",
                     month: "long",
                     day: "numeric",
@@ -103,13 +111,13 @@ export default function FacultySessionReviewPage() {
           </div>
           <div>
             <p className="text-slate-500">Status</p>
-            <p className="font-medium text-slate-800">{session.status}</p>
+            <p className="font-medium text-slate-800">{isReviewed ? "Reviewed" : "Awaiting review"}</p>
           </div>
         </section>
 
         <section>
           <h2 className="mb-3 text-lg font-semibold text-slate-800">Transcript</h2>
-          <TranscriptViewer messages={session.messages} />
+          <TranscriptViewer messages={session.messages} clientName={session.client_name} />
         </section>
 
         {fb && (
@@ -117,6 +125,11 @@ export default function FacultySessionReviewPage() {
             <h2 className="text-lg font-semibold text-slate-800">AI Feedback</h2>
             <FeedbackScoreCard score={fb.overall_score} />
             <RubricScoreTable scores={fb.rubric_scores} />
+            {fb.faculty_review_recommended && (
+              <div className="rounded-xl bg-amber-50 p-5 text-sm text-amber-900 ring-1 ring-amber-200">
+                Faculty review is recommended for this session.
+              </div>
+            )}
             <div className="grid gap-6 md:grid-cols-2">
               <div className="rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
                 <h3 className="font-semibold text-emerald-700">Strengths</h3>
@@ -142,6 +155,8 @@ export default function FacultySessionReviewPage() {
           </section>
         )}
 
+        {session.prompt_trace && <PromptTracePanel trace={session.prompt_trace} />}
+
         <section className="rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
           <label htmlFor="faculty-comment" className="text-lg font-semibold text-slate-800">
             Faculty comments
@@ -166,10 +181,10 @@ export default function FacultySessionReviewPage() {
             <button
               type="button"
               onClick={() => handleSave(true)}
-              disabled={saving || session.status === "Reviewed"}
+              disabled={saving || isReviewed}
               className="rounded-lg border border-navy-700 px-5 py-2.5 text-sm font-medium text-navy-700 hover:bg-navy-50 disabled:opacity-50"
             >
-              {session.status === "Reviewed" ? "Reviewed" : "Mark Reviewed"}
+              {isReviewed ? "Reviewed" : "Mark Reviewed"}
             </button>
             {saveNote && (
               <span className="text-sm text-emerald-700" role="status">
@@ -180,5 +195,157 @@ export default function FacultySessionReviewPage() {
         </section>
       </div>
     </Layout>
+  );
+}
+
+function PromptTracePanel({ trace }: { trace: PromptTrace }) {
+  return (
+    <section className="rounded-xl bg-white p-6 text-sm shadow-sm ring-1 ring-slate-200">
+      <h2 className="text-lg font-semibold text-slate-800">Stateful Prompt Trace</h2>
+      <p className="mt-1 text-xs text-slate-500">
+        Faculty-only reconstruction of the client system prompts and final evaluator prompt
+        used for this student session.
+      </p>
+
+      <div className="mt-4 grid gap-3 md:grid-cols-2">
+        <TracePrompt title="Base client prompt" text={trace.base_client_prompt_text} />
+        <TracePrompt title="Latest runtime state block" text={trace.latest_runtime_context_text} />
+        <TracePrompt
+          title="Latest full stateful client system prompt"
+          text={trace.latest_client_stateful_system_prompt_text}
+        />
+        <TracePrompt
+          title="Final evaluation prompt"
+          text={trace.final_evaluation_prompt_text ?? "Not available."}
+        />
+      </div>
+
+      <details className="mt-4">
+        <summary className="cursor-pointer font-medium text-slate-700">
+          Per-turn stateful prompt replay
+        </summary>
+        <div className="mt-3 space-y-3">
+          {trace.turn_traces.map((turn) => (
+            <div key={turn.student_turn_count} className="rounded-lg bg-slate-50 p-3 ring-1 ring-slate-200">
+              <p className="font-medium text-slate-800">
+                Student turn {turn.student_turn_count}: {turn.student_message}
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                Engagement {turn.engagement_level}/5 · Trust {turn.trust_level}/5 ·
+                Depth {turn.response_plan?.emotional_depth ?? 1}/5 ·
+                Stage {turn.session_stage} · Engagement delta {turn.engagement_delta} ·
+                Trust delta {turn.trust_delta ?? 0}
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                Detected: {turn.detected_behaviors.join(", ") || "none"}
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                Cue response: {turn.cue_response_analysis?.status ?? "no active cue"}
+                {turn.cue_response_analysis?.cue
+                  ? ` · ${turn.cue_response_analysis.cue}`
+                  : ""}
+              </p>
+              {turn.stage_gate && (
+                <p className="mt-1 text-xs text-slate-500">
+                  Next-stage gate ({turn.stage_gate.target_stage}): {turn.stage_gate.satisfied ? "story ready" : "blocked"}
+                  {turn.stage_gate.missing_beat_keys.length
+                    ? ` · missing ${turn.stage_gate.missing_beat_keys.join(", ")}`
+                    : ""}
+                  {turn.stage_gate.blocking_cues.length
+                    ? ` · ${turn.stage_gate.blocking_cues.length} unresolved cue(s)`
+                    : ""}
+                </p>
+              )}
+              <p className="mt-1 text-xs text-slate-500">
+                Allowed disclosures: {turn.allowed_disclosures.join("; ") || "none"}
+              </p>
+              {turn.response_plan && (
+                <div className="mt-2 rounded bg-white p-2 text-xs text-slate-600 ring-1 ring-slate-200">
+                  <p>Active cue: {turn.response_plan.active_emotional_cues.join(", ") || "none"}</p>
+                  <p>
+                    Selected disclosure: {turn.response_plan.selected_disclosure_label || "none"}
+                  </p>
+                  <p>
+                    Validation: {turn.validation?.accepted ? "accepted" : "not confirmed"} ·
+                    Revealed: {turn.revealed_information?.join(", ") || "none"}
+                  </p>
+                </div>
+              )}
+              <div className="mt-3">
+                <TracePrompt
+                  title="Response plan, semantic evidence, and generation attempts"
+                  text={JSON.stringify(
+                    {
+                      response_plan: turn.response_plan,
+                      counselor_analysis: turn.counselor_analysis,
+                      cue_response_analysis: turn.cue_response_analysis,
+                      validation: turn.validation,
+                      generation_attempts: turn.generation_attempts,
+                    },
+                    null,
+                    2,
+                  )}
+                />
+              </div>
+              <div className="mt-3 grid gap-3 md:grid-cols-2">
+                <TracePrompt
+                  title="Runtime state block"
+                  text={turn.runtime_context_text}
+                />
+                <TracePrompt
+                  title="Conversation prompt"
+                  text={turn.client_conversation_prompt_text}
+                />
+                <TracePrompt
+                  title="Full stateful client system prompt"
+                  text={turn.client_stateful_system_prompt_text}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      </details>
+
+      <details className="mt-4">
+        <summary className="cursor-pointer font-medium text-slate-700">
+          Evaluation inputs and state history
+        </summary>
+        <div className="mt-3 grid gap-3">
+          <TracePrompt
+            title="State history JSON"
+            text={JSON.stringify(trace.state_history, null, 2)}
+          />
+          <TracePrompt
+            title="Simulation fidelity audit"
+            text={JSON.stringify(trace.simulation_fidelity ?? {}, null, 2)}
+          />
+          <TracePrompt
+            title="Evaluation transcript"
+            text={trace.evaluation_transcript_text ?? "Not available."}
+          />
+          <TracePrompt
+            title="Evaluator system prompt"
+            text={trace.evaluator_system_prompt_text ?? "Not available."}
+          />
+          <TracePrompt
+            title="Evaluator user prompt"
+            text={trace.evaluator_user_prompt_text ?? "Not available."}
+          />
+        </div>
+      </details>
+    </section>
+  );
+}
+
+function TracePrompt({ title, text }: { title: string; text: string }) {
+  return (
+    <details className="rounded-lg bg-slate-50 p-3 ring-1 ring-slate-200">
+      <summary className="cursor-pointer text-sm font-medium text-slate-700">
+        {title}
+      </summary>
+      <pre className="mt-2 max-h-96 overflow-auto whitespace-pre-wrap rounded bg-slate-950 p-3 text-xs text-slate-100">
+        {text}
+      </pre>
+    </details>
   );
 }

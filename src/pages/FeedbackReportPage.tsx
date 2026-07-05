@@ -5,19 +5,21 @@ import FeedbackScoreCard from "../components/FeedbackScoreCard";
 import RubricScoreTable from "../components/RubricScoreTable";
 import LoadingSpinner from "../components/LoadingSpinner";
 import { getSession } from "../api/client";
-import type { SessionRecord } from "../types";
+import type { SessionDetail } from "../types";
 
 export default function FeedbackReportPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
-  const [session, setSession] = useState<SessionRecord | null>(null);
+  const [session, setSession] = useState<SessionDetail | null>(null);
   const [notFound, setNotFound] = useState(false);
 
   useEffect(() => {
     if (!sessionId) return;
-    getSession(sessionId).then((s) => {
-      if (s && s.evaluation) setSession(s);
-      else setNotFound(true);
-    });
+    getSession(sessionId)
+      .then((s) => {
+        if (s.evaluation) setSession(s);
+        else setNotFound(true);
+      })
+      .catch(() => setNotFound(true));
   }, [sessionId]);
 
   if (notFound) {
@@ -99,9 +101,54 @@ export default function FeedbackReportPage() {
           <p className="mt-2 text-slate-800">“{fb.suggested_improved_response}”</p>
         </section>
 
+        {fb.missed_opportunities && fb.missed_opportunities.length > 0 && (
+          <section>
+            <h2 className="mb-3 text-lg font-semibold text-slate-800">Missed Opportunities</h2>
+            <div className="space-y-3">
+              {fb.missed_opportunities.map((item, index) => (
+                <div
+                  key={index}
+                  className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-200"
+                >
+                  <dl className="space-y-2 text-sm">
+                    {Object.entries(item).map(([key, value]) => (
+                      <div key={key}>
+                        <dt className="font-medium text-slate-700">{humanizeKey(key)}</dt>
+                        <dd className="mt-1 text-slate-600">{formatAnalysisValue(value)}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {fb.specialized_analyses && Object.keys(fb.specialized_analyses).length > 0 && (
+          <section>
+            <h2 className="mb-3 text-lg font-semibold text-slate-800">Specialized Analyses</h2>
+            <div className="grid gap-3 md:grid-cols-2">
+              {Object.entries(fb.specialized_analyses).map(([key, value]) => (
+                <div key={key} className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+                  <h3 className="font-semibold text-slate-800">{humanizeKey(key)}</h3>
+                  <p className="mt-2 text-sm text-slate-600">{formatAnalysisValue(value)}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {fb.faculty_review_recommended && (
+          <section className="rounded-xl bg-amber-50 p-5 text-sm text-amber-900 ring-1 ring-amber-200">
+            Faculty review is recommended for this session.
+          </section>
+        )}
+
+        <p className="text-xs text-slate-400">{fb.disclaimer}</p>
+
         <div className="flex flex-col gap-3 sm:flex-row">
           <Link
-            to="/student/scenario"
+            to={`/student/scenario/${session.scenario_id}`}
             className="rounded-lg bg-navy-700 px-6 py-3 text-center text-sm font-medium text-white hover:bg-navy-600"
           >
             Retry Scenario
@@ -116,4 +163,28 @@ export default function FeedbackReportPage() {
       </div>
     </Layout>
   );
+}
+
+function humanizeKey(key: string): string {
+  return key
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function formatAnalysisValue(value: unknown): string {
+  if (value === null || value === undefined) return "—";
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  if (Array.isArray(value)) {
+    return value.map(formatAnalysisValue).join("; ");
+  }
+  if (typeof value === "object") {
+    return Object.entries(value)
+      .map(([key, item]) => `${humanizeKey(key)}: ${formatAnalysisValue(item)}`)
+      .join("; ");
+  }
+  return String(value);
 }

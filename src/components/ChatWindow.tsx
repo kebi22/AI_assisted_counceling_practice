@@ -1,17 +1,24 @@
 import { useEffect, useRef, useState } from "react";
 import type { ChatMessage } from "../types";
-import { SCENARIO } from "../types";
 import MessageBubble from "./MessageBubble";
 
 interface Props {
   messages: ChatMessage[];
+  clientName: string;
   isLoading: boolean;
   error: string | null;
   onSend: (text: string) => void;
   onEndSession: () => void;
 }
 
-export default function ChatWindow({ messages, isLoading, error, onSend, onEndSession }: Props) {
+export default function ChatWindow({
+  messages,
+  clientName,
+  isLoading,
+  error,
+  onSend,
+  onEndSession,
+}: Props) {
   const [input, setInput] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -30,11 +37,11 @@ export default function ChatWindow({ messages, isLoading, error, onSend, onEndSe
     <div className="flex h-[70vh] flex-col rounded-xl bg-white shadow-sm ring-1 ring-slate-200">
       <div ref={scrollRef} className="flex-1 space-y-4 overflow-y-auto p-4" aria-label="Conversation history">
         {messages.map((m) => (
-          <MessageBubble key={m.id} message={m} />
+          <MessageBubble key={m.id} message={m} clientName={clientName} />
         ))}
         {isLoading && (
           <p className="text-sm italic text-slate-500" role="status" aria-live="polite">
-            {SCENARIO.clientName} is responding...
+            {clientName} is responding...
           </p>
         )}
         {error && <p className="text-sm text-red-600">{error}</p>}
@@ -56,7 +63,7 @@ export default function ChatWindow({ messages, isLoading, error, onSend, onEndSe
                 handleSend();
               }
             }}
-            placeholder={`Respond to ${SCENARIO.clientName}...`}
+            placeholder={`Respond to ${clientName}...`}
             className="flex-1 resize-none rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-navy-600 focus:outline-none focus:ring-1 focus:ring-navy-600"
           />
           <div className="flex flex-col gap-2">
