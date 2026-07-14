@@ -35,6 +35,7 @@ class SessionState(UUIDMixin, TimestampMixin, Base):
         JSONColumn, nullable=False, default=list
     )
     emotional_cues: Mapped[list[Any]] = mapped_column(JSONColumn, nullable=False, default=list)
+    beat_states: Mapped[list[Any]] = mapped_column(JSONColumn, nullable=False, default=list)
     state_history: Mapped[list[Any]] = mapped_column(JSONColumn, nullable=False, default=list)
 
     session: Mapped["SimulationSession"] = relationship(back_populates="state")

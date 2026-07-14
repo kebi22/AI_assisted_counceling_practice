@@ -224,7 +224,7 @@ export default function ScenarioPreviewPage() {
                   </p>
                   <p>{beat.disclosure_content || "Cue-only beat"}</p>
                   <p className="text-xs text-slate-500">
-                    Cues: {beat.emotional_cues.join(", ") || "none"} · trust {beat.minimum_trust_level}+ · engagement {beat.minimum_engagement_level}+ · {beat.required_counselor_response}
+                    Cues: {beat.emotional_cues.join(", ") || "none"} · trust {beat.minimum_trust_level}+ · engagement {beat.minimum_engagement_level}+ · response milestone {beat.required_counselor_response}
                   </p>
                 </li>
               ))}
@@ -577,8 +577,14 @@ function PromptTracePanel({
               {turn.stage_gate && (
                 <p className="mt-1 text-xs text-slate-500">
                   Next-stage gate ({turn.stage_gate.target_stage}): {turn.stage_gate.satisfied ? "story ready" : "blocked"}
+                  {turn.stage_gate.progression_basis === "clinical_milestones"
+                    ? ` · milestone ${turn.stage_gate.milestone_ready ? "ready" : "building"}`
+                    : ""}
                   {turn.stage_gate.missing_beat_keys.length
                     ? ` · missing ${turn.stage_gate.missing_beat_keys.join(", ")}`
+                    : ""}
+                  {turn.stage_gate.unresolved_beat_keys?.length
+                    ? ` · unresolved beats ${turn.stage_gate.unresolved_beat_keys.join(", ")}`
                     : ""}
                   {turn.stage_gate.blocking_cues.length
                     ? ` · ${turn.stage_gate.blocking_cues.length} unresolved cue(s)`
@@ -608,6 +614,7 @@ function PromptTracePanel({
                       response_plan: turn.response_plan,
                       counselor_analysis: turn.counselor_analysis,
                       cue_response_analysis: turn.cue_response_analysis,
+                      beat_states: turn.beat_states,
                       validation: turn.validation,
                       generation_attempts: turn.generation_attempts,
                     },

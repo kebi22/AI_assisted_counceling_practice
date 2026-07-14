@@ -1,7 +1,7 @@
 """Add session modality and nonverbal summary for audio/video modes.
 
-Revision ID: 0007
-Revises: 0006
+Revision ID: 0008_session_modality
+Revises: 0007_beat_state_ledger
 Create Date: 2026-07-05
 """
 
@@ -13,8 +13,8 @@ import sqlalchemy as sa
 from app.db.base import JSONColumn
 
 
-revision = "0007"
-down_revision = "0006"
+revision = "0008_session_modality"
+down_revision = "0007_beat_state_ledger"
 branch_labels = None
 depends_on = None
 

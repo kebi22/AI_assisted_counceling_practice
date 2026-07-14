@@ -571,8 +571,13 @@ export interface PromptTrace {
         target_stage: string;
         satisfied: boolean;
         time_and_trust_ready?: boolean;
+        milestone_ready?: boolean;
+        progression_basis?: string;
+        required_trust_level?: number;
+        required_engagement_level?: number;
         required_beat_keys: string[];
         missing_beat_keys: string[];
+        unresolved_beat_keys?: string[];
         blocking_cues: Array<Record<string, unknown>>;
         legacy_compatible: boolean;
       } | null;
@@ -582,6 +587,7 @@ export interface PromptTrace {
       generation_attempts?: Array<Record<string, unknown>>;
       revealed_information?: string[];
       emotional_cues?: unknown[];
+      beat_states?: unknown[];
       runtime_context_text: string;
       client_stateful_system_prompt_text: string;
       client_conversation_prompt_text: string;
@@ -603,6 +609,7 @@ export interface ScenarioTestMessageResponse {
     selected_disclosure_key?: string | null;
     revealed_information?: string[];
     emotional_cues?: unknown[];
+    beat_states?: unknown[];
   } | null;
   trace?: PromptTrace | null;
 }

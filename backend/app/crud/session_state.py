@@ -25,6 +25,7 @@ async def create_session_state(
         repair_count=initial_state.get("repair_count", 0),
         revealed_information=initial_state.get("revealed_information", []),
         emotional_cues=initial_state.get("emotional_cues", []),
+        beat_states=initial_state.get("beat_states", []),
         state_history=initial_state.get("state_history", []),
     )
     db.add(state)

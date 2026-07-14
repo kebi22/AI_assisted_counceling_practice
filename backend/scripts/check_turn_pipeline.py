@@ -334,12 +334,32 @@ async def main() -> None:
         student_turn_count=4,
     )
     assert missed_status == "missed"
+    beat_patch = StateTransitionService._update_beat_response_state(
+        missed_state,
+        detected=CounselorBehaviorDetection(),
+        cue_analysis=missed,
+        previous_cue_response=missed_status,
+        student_turn_count=4,
+    )
+    assert beat_patch is not None
+    assert beat_patch["beat_key"] == "time_management"
+    assert beat_patch["resolution_status"] == "needs_repair"
+    assert missed_state.beat_states[-1]["requires_repair"] is True
     gate = StateTransitionService._stage_gate_status(
         scenario=cue_scenario,
         state=missed_state,
         target_stage="mid",
     )
     assert not gate["satisfied"]
+    assert gate["unresolved_beat_keys"] == ["time_management"]
+    dependent = StateTransitionService._eligible_progression_beats(
+        MODULE1_PROGRESSION_BEATS,
+        state=missed_state,
+        detected=CounselorBehaviorDetection(reflection_of_feeling=True),
+        cue_analysis=missed,
+        previous_cue_response=missed_status,
+    )
+    assert "exhaustion" not in [beat.key for beat in dependent]
     derived = StateTransitionService._derived_behavior_labels(
         state_history=[],
         detected=CounselorBehaviorDetection(),
@@ -360,6 +380,16 @@ async def main() -> None:
         student_turn_count=5,
     )
     assert repaired_status == "repaired"
+    repaired_patch = StateTransitionService._update_beat_response_state(
+        missed_state,
+        detected=CounselorBehaviorDetection(),
+        cue_analysis=repair,
+        previous_cue_response=repaired_status,
+        student_turn_count=5,
+    )
+    assert repaired_patch is not None
+    assert repaired_patch["resolution_status"] == "repaired"
+    assert missed_state.beat_states[-1]["requires_repair"] is False
     repaired_gate = StateTransitionService._stage_gate_status(
         scenario=cue_scenario,
         state=missed_state,

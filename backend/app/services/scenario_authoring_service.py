@@ -671,6 +671,7 @@ class ScenarioAuthoringService:
             "generation_attempts": event.get("generation_attempts", []),
             "revealed_information": event.get("revealed_information", []),
             "emotional_cues": event.get("emotional_cues", []),
+            "beat_states": event.get("beat_states", []),
             "runtime_context_text": prepared.runtime_context,
             "client_stateful_system_prompt_text": prepared.system_prompt,
             "client_conversation_prompt_text": prepared.conversation_prompt,
@@ -695,6 +696,7 @@ class ScenarioAuthoringService:
             ),
             "revealed_information": list(state.revealed_information),
             "emotional_cues": list(state.emotional_cues),
+            "beat_states": list(state.beat_states or []),
             "expected_client_reactions": event.get("expected_client_reactions", []),
         }
 

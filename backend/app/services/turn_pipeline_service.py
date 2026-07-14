@@ -138,6 +138,31 @@ class TurnPipelineService:
         state.revealed_information = list(
             dict.fromkeys([*validation.detected_disclosure_keys, *authored_opening_keys])
         )
+        state.beat_states = []
+        for key in state.revealed_information:
+            beat = next(
+                (item for item in scenario.progression_beats if item.key == key),
+                None,
+            )
+            state.beat_states = StateTransitionService._upsert_beat_state(
+                state.beat_states or [],
+                {
+                    "beat_key": str(key),
+                    "disclosure_status": "revealed",
+                    "post_disclosure_status": (
+                        "pending_response"
+                        if beat and beat.required_counselor_response != "any"
+                        else "not_required"
+                    ),
+                    "resolution_status": (
+                        "pending_response"
+                        if beat and beat.required_counselor_response != "any"
+                        else "resolved"
+                    ),
+                    "requires_repair": False,
+                    "revealed_on_turn": 0,
+                },
+            )
         state.emotional_cues = []
         for cue in validation.detected_emotional_cues:
             beat = next(
@@ -166,6 +191,7 @@ class TurnPipelineService:
                 "validation": validation.model_dump(),
                 "revealed_information": list(state.revealed_information),
                 "emotional_cues": list(state.emotional_cues),
+                "beat_states": list(state.beat_states),
                 "engagement_level": state.engagement_level,
                 "trust_level": state.trust_level,
                 "emotional_depth": state.emotional_depth or 1,
@@ -396,6 +422,17 @@ class TurnPipelineService:
         for key in validation.detected_disclosure_keys:
             if key in permitted and key not in revealed:
                 revealed.append(key)
+                state.beat_states = StateTransitionService._upsert_beat_state(
+                    state.beat_states or [],
+                    {
+                        "beat_key": key,
+                        "disclosure_status": "revealed",
+                        "post_disclosure_status": "pending_response",
+                        "resolution_status": "pending_response",
+                        "requires_repair": False,
+                        "revealed_on_turn": prepared.response_plan.turn,
+                    },
+                )
         state.revealed_information = revealed
 
         cue_ledger = list(state.emotional_cues)
@@ -444,6 +481,7 @@ class TurnPipelineService:
             "client_response": client_text,
             "revealed_information": list(state.revealed_information),
             "emotional_cues": list(state.emotional_cues),
+            "beat_states": list(state.beat_states or []),
             "client_persona_prompt_text": prepared.persona_prompt,
             "runtime_context_text": prepared.runtime_context,
             "client_stateful_system_prompt_text": prepared.system_prompt,
@@ -456,6 +494,7 @@ class TurnPipelineService:
             "session_stage": state.session_stage,
             "revealed_information": list(state.revealed_information),
             "emotional_cues": list(state.emotional_cues),
+            "beat_states": list(state.beat_states or []),
             "emotional_depth": state.emotional_depth or 1,
             "rupture_count": state.rupture_count or 0,
             "repair_count": state.repair_count or 0,

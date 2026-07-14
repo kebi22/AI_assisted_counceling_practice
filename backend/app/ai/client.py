@@ -1,8 +1,4 @@
-"""Reusable Gemini client wrapper.
-
-Centralizes Google Gen AI SDK configuration so no route or service constructs
-its own client. The API key never leaves the server.
-"""
+"""Reusable Gemini client wrapper for Developer API and Vertex AI."""
 
 from __future__ import annotations
 

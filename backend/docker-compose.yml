@@ -21,7 +21,7 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    # Loads GEMINI_API_KEY and the model names from backend/.env.
+    # Loads the AI provider and model names from backend/.env.
     env_file:
       - .env
     # These override anything in .env: DATABASE_URL must point at the "db"
@@ -31,6 +31,9 @@ services:
       APP_ENV: development
       DEBUG: "true"
       CORS_ORIGINS: http://localhost:5173,http://localhost:3000
+      GOOGLE_APPLICATION_CREDENTIALS: /gcloud/application_default_credentials.json
+    volumes:
+      - ${HOME}/.config/gcloud:/gcloud:ro
     ports:
       - "8000:8000"
 
