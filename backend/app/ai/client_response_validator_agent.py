@@ -174,9 +174,17 @@ class SemanticClientResponseValidator:
             if item.status in {"expressed", "deepened"}
             and item.confidence >= _CUE_CONFIDENCE
         ]
-        unauthorized_cues = [
-            cue for cue in cues if cue not in set(plan.permitted_emotional_cues)
-        ]
+        revealed_or_selected = set(plan.already_revealed_keys)
+        if plan.selected_disclosure_key:
+            revealed_or_selected.add(plan.selected_disclosure_key)
+        flexible_cues = {
+            cue
+            for beat in scenario.progression_beats
+            if beat.key in revealed_or_selected
+            for cue in beat.emotional_cues
+        }
+        permitted_cues = set(plan.permitted_emotional_cues) | flexible_cues
+        unauthorized_cues = [cue for cue in cues if cue not in permitted_cues]
         violations = [
             f"Semantic validation found locked disclosure '{key}'."
             for key in unauthorized

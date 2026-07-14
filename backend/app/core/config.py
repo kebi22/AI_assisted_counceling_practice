@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     )
 
     gemini_api_key: str = "replace_me"
+    ai_provider: str = "gemini_developer_api"
+    google_cloud_project: str | None = None
+    google_cloud_location: str = "global"
     gemini_client_model: str = "gemini-2.0-flash"
     gemini_evaluator_model: str = "gemini-2.0-flash"
 
@@ -58,7 +61,9 @@ class Settings(BaseSettings):
 
     @property
     def gemini_configured(self) -> bool:
-        """True when a real Gemini API key has been supplied."""
+        """True when the selected Gemini provider has its required configuration."""
+        if self.ai_provider == "vertex_ai":
+            return bool(self.google_cloud_project and self.google_cloud_location)
         return bool(self.gemini_api_key) and self.gemini_api_key != "replace_me"
 
 

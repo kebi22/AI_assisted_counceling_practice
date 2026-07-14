@@ -78,6 +78,13 @@ class StateTransitionService:
             cue_analysis=cue_analysis,
             student_turn_count=student_turn_count,
         )
+        beat_response_state = self._update_beat_response_state(
+            state,
+            detected=detected,
+            cue_analysis=cue_analysis,
+            previous_cue_response=previous_cue_response,
+            student_turn_count=student_turn_count,
+        )
         derived_labels = self._derived_behavior_labels(
             state_history=state.state_history,
             detected=detected,
@@ -120,13 +127,6 @@ class StateTransitionService:
             min_level=min_level,
             max_level=max_level,
         )
-        state.session_stage, stage_gate = self._session_stage(
-            current_stage=state.session_stage,
-            student_turn_count=student_turn_count,
-            trust_level=state.trust_level,
-            scenario=scenario,
-            state=state,
-        )
         stage_engagement_cap = {"early": 3, "mid": 4, "later": 5}.get(
             state.session_stage,
             max_level,
@@ -135,6 +135,13 @@ class StateTransitionService:
             state.engagement_level + engagement_delta,
             min_level=min_level,
             max_level=min(max_level, stage_engagement_cap),
+        )
+        state.session_stage, stage_gate = self._session_stage(
+            current_stage=state.session_stage,
+            trust_level=state.trust_level,
+            engagement_level=state.engagement_level,
+            scenario=scenario,
+            state=state,
         )
         state.disclosure_stage = self._disclosure_stage(state.session_stage)
         self._update_depth_and_rupture(
@@ -186,6 +193,7 @@ class StateTransitionService:
             ],
             "eligible_progression_beat_keys": [beat.key for beat in eligible_beats],
             "previous_cue_response": previous_cue_response,
+            "beat_response_state": beat_response_state,
             "state_before": state_before,
             "state_after": self._state_snapshot(state),
         }
@@ -255,8 +263,8 @@ class StateTransitionService:
     def _session_stage(
         *,
         current_stage: str,
-        student_turn_count: int,
         trust_level: int,
+        engagement_level: int,
         scenario: ScenarioAuthoringData,
         state: SessionState,
     ) -> tuple[str, dict[str, Any]]:
@@ -268,13 +276,16 @@ class StateTransitionService:
             state=state,
             target_stage=target,
         )
-        time_and_trust_ready = (
-            current_stage == "early" and student_turn_count >= 4 and trust_level >= 3
-        ) or (
-            current_stage == "mid" and student_turn_count >= 8 and trust_level >= 4
+        required_level = 3 if current_stage == "early" else 4
+        milestone_ready = (
+            trust_level >= required_level and engagement_level >= required_level
         )
-        gate["time_and_trust_ready"] = time_and_trust_ready
-        if time_and_trust_ready and gate["satisfied"]:
+        gate["time_and_trust_ready"] = milestone_ready
+        gate["milestone_ready"] = milestone_ready
+        gate["required_trust_level"] = required_level
+        gate["required_engagement_level"] = required_level
+        gate["progression_basis"] = "clinical_milestones"
+        if milestone_ready and gate["satisfied"]:
             return target, gate
         return current_stage, gate
 
@@ -303,6 +314,15 @@ class StateTransitionService:
             }
         revealed = {str(item) for item in state.revealed_information}
         missing = [key for key in required if key not in revealed]
+        beat_state_map = StateTransitionService._beat_state_map(state)
+        unresolved_beats = [
+            key
+            for key in required
+            if key in revealed
+            and StateTransitionService._beat_needs_repair(
+                beat_state_map.get(key)
+            )
+        ]
         blocking = [
             {
                 "beat_key": item.get("beat_key"),
@@ -314,14 +334,16 @@ class StateTransitionService:
             and item.get("beat_key") in required
             and item.get("status") in {"presented", "unresolved", "missed"}
         ]
-        return {
+        result = {
             "target_stage": target_stage,
-            "satisfied": not missing and not blocking,
+            "satisfied": not missing and not blocking and not unresolved_beats,
             "required_beat_keys": required,
             "missing_beat_keys": missing,
+            "unresolved_beat_keys": unresolved_beats,
             "blocking_cues": blocking,
             "legacy_compatible": False,
         }
+        return result
 
     @staticmethod
     def _disclosure_stage(session_stage: str) -> int:
@@ -340,6 +362,7 @@ class StateTransitionService:
             "session_stage": state.session_stage,
             "revealed_information": state.revealed_information,
             "emotional_cues": state.emotional_cues,
+            "beat_states": state.beat_states or [],
             "state_history": state.state_history,
             "emotional_depth": state.emotional_depth or 1,
             "rupture_count": state.rupture_count or 0,
@@ -355,6 +378,7 @@ class StateTransitionService:
             "session_stage": state.session_stage,
             "revealed_information": list(state.revealed_information),
             "emotional_cues": list(state.emotional_cues),
+            "beat_states": list(state.beat_states or []),
             "emotional_depth": state.emotional_depth or 1,
             "rupture_count": state.rupture_count or 0,
             "repair_count": state.repair_count or 0,
@@ -462,6 +486,122 @@ class StateTransitionService:
         return status
 
     @staticmethod
+    def _update_beat_response_state(
+        state: SessionState,
+        *,
+        detected: CounselorBehaviorDetection,
+        cue_analysis: CueResponseAnalysis,
+        previous_cue_response: str | None,
+        student_turn_count: int,
+    ) -> dict[str, Any] | None:
+        if previous_cue_response is None:
+            return None
+        cue_record = next(
+            (
+                item
+                for item in reversed(state.emotional_cues)
+                if isinstance(item, dict)
+                and item.get("responded_on_turn") == student_turn_count
+                and item.get("beat_key")
+            ),
+            None,
+        )
+        beat_key = str(cue_record.get("beat_key")) if cue_record else cue_analysis.cue_key
+        if not beat_key:
+            return None
+        harmful = any(
+            (
+                detected.premature_advice,
+                detected.rapid_fire_questions,
+                detected.excessive_questioning,
+                detected.frequent_topic_shift,
+                detected.early_problem_solving,
+            )
+        )
+        missed = previous_cue_response in {"missed", "unresolved"} or cue_analysis.status in {
+            "ignored",
+            "topic_only",
+            "misattuned",
+            "redirected",
+        }
+        positive = previous_cue_response in {
+            "acknowledged",
+            "accurately_reflected",
+            "deepened",
+            "repaired",
+        }
+        if harmful or missed:
+            patch = {
+                "beat_key": beat_key,
+                "disclosure_status": "revealed",
+                "post_disclosure_status": "ruptured" if harmful else "missed",
+                "resolution_status": "needs_repair",
+                "requires_repair": True,
+                "last_cue_response": previous_cue_response,
+                "last_semantic_status": cue_analysis.status,
+                "last_counselor_evidence": cue_analysis.counselor_evidence,
+                "responded_on_turn": student_turn_count,
+            }
+        elif positive:
+            patch = {
+                "beat_key": beat_key,
+                "disclosure_status": "revealed",
+                "post_disclosure_status": (
+                    "repaired" if previous_cue_response == "repaired" else "held"
+                ),
+                "resolution_status": (
+                    "repaired" if previous_cue_response == "repaired" else "resolved"
+                ),
+                "requires_repair": False,
+                "last_cue_response": previous_cue_response,
+                "last_semantic_status": cue_analysis.status,
+                "last_counselor_evidence": cue_analysis.counselor_evidence,
+                "responded_on_turn": student_turn_count,
+            }
+        else:
+            return None
+        state.beat_states = StateTransitionService._upsert_beat_state(
+            state.beat_states or [],
+            patch,
+        )
+        return patch
+
+    @staticmethod
+    def _upsert_beat_state(
+        beat_states: list[Any], patch: dict[str, Any]
+    ) -> list[dict[str, Any]]:
+        ledger = [dict(item) for item in beat_states if isinstance(item, dict)]
+        index = next(
+            (
+                idx
+                for idx, item in enumerate(ledger)
+                if item.get("beat_key") == patch.get("beat_key")
+            ),
+            None,
+        )
+        if index is None:
+            ledger.append(patch)
+        else:
+            ledger[index] = {**ledger[index], **patch}
+        return ledger
+
+    @staticmethod
+    def _beat_state_map(state: SessionState) -> dict[str, dict[str, Any]]:
+        return {
+            str(item.get("beat_key")): item
+            for item in state.beat_states or []
+            if isinstance(item, dict) and item.get("beat_key")
+        }
+
+    @staticmethod
+    def _beat_needs_repair(beat_state: dict[str, Any] | None) -> bool:
+        if not beat_state:
+            return False
+        return bool(beat_state.get("requires_repair")) or beat_state.get(
+            "resolution_status"
+        ) in {"needs_repair", "unresolved"}
+
+    @staticmethod
     def _eligible_progression_beats(
         beats: list[ProgressionBeat],
         *,
@@ -472,6 +612,7 @@ class StateTransitionService:
     ) -> list[ProgressionBeat]:
         revealed = {str(item) for item in state.revealed_information}
         current_stage = STAGE_ORDER.get(state.session_stage, 1)
+        beat_state_map = StateTransitionService._beat_state_map(state)
         eligible: list[ProgressionBeat] = []
         for beat in beats:
             if beat.key in revealed and not beat.repeatable:
@@ -484,6 +625,23 @@ class StateTransitionService:
                 continue
             if any(key not in revealed for key in beat.prerequisite_beat_keys):
                 continue
+            if any(
+                StateTransitionService._beat_needs_repair(beat_state_map.get(key))
+                for key in beat.prerequisite_beat_keys
+            ):
+                continue
+            prerequisite_beats = [
+                candidate
+                for candidate in beats
+                if candidate.key in beat.prerequisite_beat_keys
+            ]
+            if any(
+                not StateTransitionService._beat_expectation_satisfied(
+                    prerequisite, state=state
+                )
+                for prerequisite in prerequisite_beats
+            ):
+                continue
             if beat.trigger == "direct_question" and detected.question_count == 0:
                 continue
             if beat.trigger == "after_reflection" and not (
@@ -492,22 +650,38 @@ class StateTransitionService:
                 continue
             if beat.trigger == "after_pause" and not detected.appropriate_processing_space:
                 continue
-            requirement = beat.required_counselor_response
-            if requirement == "acknowledge_cue" and previous_cue_response not in {
-                "acknowledged",
-                "accurately_reflected",
-                "deepened",
-                "repaired",
-            }:
-                continue
-            if requirement == "deepen_cue" and cue_analysis.status != "deepened":
-                continue
-            if requirement == "direct_question" and detected.question_count == 0:
-                continue
-            if requirement == "therapeutic_pause" and not detected.appropriate_processing_space:
-                continue
             eligible.append(beat)
         return eligible
+
+    @staticmethod
+    def _beat_expectation_satisfied(
+        beat: ProgressionBeat, *, state: SessionState
+    ) -> bool:
+        """Evaluate a revealed beat's post-presentation counselor milestone."""
+        requirement = beat.required_counselor_response
+        beat_state = StateTransitionService._beat_state_map(state).get(beat.key)
+        if StateTransitionService._beat_needs_repair(beat_state):
+            return False
+        if requirement == "any":
+            return True
+        records = [
+            item
+            for item in state.emotional_cues
+            if isinstance(item, dict) and item.get("beat_key") == beat.key
+        ]
+        statuses = {str(item.get("status")) for item in records}
+        if requirement == "acknowledge_cue":
+            return bool(
+                statuses
+                & {"acknowledged", "accurately_reflected", "deepened", "repaired"}
+            )
+        if requirement == "deepen_cue":
+            return bool(statuses & {"deepened", "repaired"})
+        if requirement == "direct_question":
+            return any(item.get("question_count", 0) > 0 for item in records)
+        if requirement == "therapeutic_pause":
+            return any(item.get("appropriate_processing_space") for item in records)
+        return False
 
     @staticmethod
     def _beat_disclosure(beat: ProgressionBeat) -> DisclosureItem:

@@ -1,8 +1,4 @@
-"""Reusable Gemini client wrapper.
-
-Centralizes Google Gen AI SDK configuration so no route or service constructs
-its own client. The API key never leaves the server.
-"""
+"""Reusable Gemini client wrapper for Developer API and Vertex AI."""
 
 from __future__ import annotations
 
@@ -31,16 +27,29 @@ class GeminiClient:
 
     def _get_client(self) -> Any:
         if not settings.gemini_configured:
-            raise AIServiceError("Gemini API key is not configured.")
+            raise AIServiceError(f"Gemini provider {settings.ai_provider!r} is not configured.")
         if self._client is None:
             try:
                 from google import genai
                 from google.genai import types
 
-                self._client = genai.Client(
-                    api_key=settings.gemini_api_key,
-                    http_options=types.HttpOptions(timeout=_REQUEST_TIMEOUT_MS),
-                )
+                http_options = types.HttpOptions(timeout=_REQUEST_TIMEOUT_MS)
+                if settings.ai_provider == "vertex_ai":
+                    self._client = genai.Client(
+                        vertexai=True,
+                        project=settings.google_cloud_project,
+                        location=settings.google_cloud_location,
+                        http_options=http_options,
+                    )
+                elif settings.ai_provider == "gemini_developer_api":
+                    self._client = genai.Client(
+                        api_key=settings.gemini_api_key,
+                        http_options=http_options,
+                    )
+                else:
+                    raise AIServiceError(
+                        f"Unsupported Gemini provider: {settings.ai_provider!r}."
+                    )
             except ImportError as exc:  # pragma: no cover - depends on environment
                 raise AIServiceError("Google Gen AI SDK is not installed.") from exc
         return self._client

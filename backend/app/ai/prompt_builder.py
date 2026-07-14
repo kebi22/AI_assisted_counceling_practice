@@ -337,7 +337,7 @@ class ScenarioPromptBuilder:
                     f"  Private meaning: {beat.private_meaning or 'not specified'}",
                     f"  Permitted disclosure: {beat.disclosure_content or 'none'}",
                     f"  Prerequisites: {prerequisites}; trust {beat.minimum_trust_level}+; engagement {beat.minimum_engagement_level}+",
-                    f"  Trigger: {beat.trigger}; required counselor response: {beat.required_counselor_response}",
+                    f"  Entry trigger: {beat.trigger}; post-presentation response milestone before dependent beats: {beat.required_counselor_response}",
                 ]
             )
         return "\n".join(lines)

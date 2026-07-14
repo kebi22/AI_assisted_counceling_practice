@@ -40,6 +40,14 @@ class ResponsePlanningService:
             ),
             None,
         )
+        recovery_beat = next(
+            (
+                beat
+                for beat in reversed(scenario.progression_beats)
+                if beat.key in revealed and beat.emotional_cues
+            ),
+            None,
+        )
         all_items = all_disclosure_items(scenario)
         eligible_keys = [disclosure_key(item) for item in eligible]
         blocked_keys = [
@@ -52,6 +60,7 @@ class ResponsePlanningService:
             list(selected_beat.emotional_cues)
             if selected_beat and selected_beat.emotional_cues
             else unresolved_cues
+            or (list(recovery_beat.emotional_cues) if recovery_beat else [])
         )
         permitted_cues = list(dict.fromkeys(cues))
 
@@ -61,6 +70,12 @@ class ResponsePlanningService:
             if reactions
             else self._default_effect(transition)
         )
+        if not selected and not unresolved_cues and recovery_beat:
+            counselor_effect = (
+                counselor_effect
+                + " Re-express only the most recent revealed experience without introducing "
+                "a new story fact or deeper private meaning."
+            )
         return ClientResponsePlan(
             turn=student_turn_count,
             session_stage=state.session_stage,

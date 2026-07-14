@@ -301,12 +301,15 @@ function ProgressionBeatEditor({
                 </select>
               </label>
               <label className="block text-sm font-medium text-slate-700">
-                Counselor condition
+                Response milestone before next beat
                 <select className={inputClass} value={item.required_counselor_response} onChange={(e) => update(idx, { required_counselor_response: e.target.value as ProgressionBeat["required_counselor_response"] })}>
                   <option value="any">Any response</option><option value="acknowledge_cue">Acknowledge cue</option><option value="deepen_cue">Deepen cue</option><option value="direct_question">Direct question</option><option value="therapeutic_pause">Therapeutic pause</option>
                 </select>
               </label>
             </div>
+            <p className="text-xs text-slate-500">
+              This milestone is evaluated after this beat presents its cues and controls progression to dependent beats.
+            </p>
             <div className="flex flex-wrap items-center gap-5 text-sm text-slate-700">
               <label className="flex items-center gap-2"><input type="checkbox" checked={item.required_for_completion} onChange={(e) => update(idx, { required_for_completion: e.target.checked })} />Required story beat</label>
               <label className="flex items-center gap-2"><input type="checkbox" checked={item.repeatable} onChange={(e) => update(idx, { repeatable: e.target.checked })} />May repeat</label>

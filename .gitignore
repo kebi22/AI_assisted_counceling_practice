@@ -1,3 +1,6 @@
+# Generated presentation/architecture artifacts (decks, exported slide images)
+outputs/
+
 # Logs
 logs
 *.log

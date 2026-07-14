@@ -165,6 +165,7 @@ class FacultyService:
                     "generation_attempts": event.get("generation_attempts", []),
                     "revealed_information": event.get("revealed_information", []),
                     "emotional_cues": event.get("emotional_cues", []),
+                    "beat_states": event.get("beat_states", []),
                     "runtime_context_text": runtime_context,
                     "client_stateful_system_prompt_text": event.get(
                         "client_stateful_system_prompt_text"
@@ -306,6 +307,9 @@ class FacultyService:
             ),
             emotional_cues=list(
                 state_after.get("emotional_cues") or event.get("emotional_cues") or []
+            ),
+            beat_states=list(
+                state_after.get("beat_states") or event.get("beat_states") or []
             ),
             emotional_depth=int(
                 state_after.get("emotional_depth") or event.get("emotional_depth") or 1
