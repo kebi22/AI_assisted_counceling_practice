@@ -15,11 +15,13 @@ import type {
   ScenarioSummary,
   ScenarioTemplate,
   ScenarioTestMessageResponse,
+  SendAudioMessageResult,
   SendMessageResult,
   SessionDetail,
   StudentSessionSummary,
   TestTurn,
 } from "../types";
+import type { Modality } from "../types";
 
 const API_BASE_URL: string =
   (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, "") ??
@@ -96,10 +98,13 @@ export async function getActiveScenario(): Promise<ScenarioDetail> {
 }
 
 // --- Sessions --------------------------------------------------------------
-export function startSession(scenarioId: string): Promise<SessionDetail> {
+export function startSession(
+  scenarioId: string,
+  modality: Modality = "text",
+): Promise<SessionDetail> {
   return request<SessionDetail>("/sessions", {
     method: "POST",
-    body: { scenario_id: scenarioId },
+    body: { scenario_id: scenarioId, modality },
   });
 }
 
@@ -116,6 +121,34 @@ export function sendMessage(sessionId: string, content: string): Promise<SendMes
     method: "POST",
     body: { content },
   });
+}
+
+/**
+ * Upload a recorded student audio turn. The backend transcribes it, runs the
+ * same text pipeline, and returns the client's text + synthesized speech.
+ * Uses multipart/form-data, so it bypasses the JSON `request` helper.
+ */
+export async function sendAudioMessage(
+  sessionId: string,
+  audio: Blob,
+): Promise<SendAudioMessageResult> {
+  const form = new FormData();
+  const extension = audio.type.includes("mp4") ? "mp4" : "webm";
+  form.append("audio", audio, `turn.${extension}`);
+
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}/sessions/${sessionId}/audio-messages`, {
+      method: "POST",
+      body: form,
+    });
+  } catch {
+    throw new ApiError(0, "Unable to reach the simulator service. Is the backend running?");
+  }
+  if (!response.ok) {
+    throw new ApiError(response.status, await extractError(response));
+  }
+  return (await response.json()) as SendAudioMessageResult;
 }
 
 export function completeSession(sessionId: string): Promise<SessionDetail> {

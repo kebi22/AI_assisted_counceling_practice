@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import Layout from "../components/Layout";
 import ChatWindow from "../components/ChatWindow";
 import LoadingSpinner from "../components/LoadingSpinner";
@@ -7,14 +7,28 @@ import {
   completeSession,
   evaluateSession,
   getScenario,
+  sendAudioMessage,
   sendMessage,
   startSession,
 } from "../api/client";
-import type { ChatMessage, ScenarioDetail, SessionDetail } from "../types";
-import { MIN_STUDENT_MESSAGES } from "../types";
+import type { ChatMessage, Modality, ScenarioDetail, SessionDetail } from "../types";
+import { MIN_STUDENT_MESSAGES, MODALITY_LABELS } from "../types";
+
+function base64ToObjectUrl(base64: string, mimeType: string): string {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return URL.createObjectURL(new Blob([bytes], { type: mimeType }));
+}
+
+function parseModality(raw: string | null): Modality {
+  return raw === "audio" || raw === "video" ? raw : "text";
+}
 
 export default function SimulationChatPage() {
   const { scenarioId } = useParams<{ scenarioId: string }>();
+  const [searchParams] = useSearchParams();
+  const modality = parseModality(searchParams.get("mode"));
   const navigate = useNavigate();
   const [scenario, setScenario] = useState<ScenarioDetail | null>(null);
   const [session, setSession] = useState<SessionDetail | null>(null);
@@ -23,6 +37,7 @@ export default function SimulationChatPage() {
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [endWarning, setEndWarning] = useState<string | null>(null);
+  const [clientAudioUrl, setClientAudioUrl] = useState<string | null>(null);
   const startedRef = useRef(false);
 
   useEffect(() => {
@@ -32,17 +47,47 @@ export default function SimulationChatPage() {
       try {
         const selectedScenario = await getScenario(scenarioId);
         setScenario(selectedScenario);
-        const newSession = await startSession(selectedScenario.id);
+        const newSession = await startSession(selectedScenario.id, modality);
         setSession(newSession);
         setMessages(newSession.messages);
       } catch {
         setError("The simulator service is currently unavailable.");
       }
     })();
-  }, [scenarioId]);
+  }, [scenarioId, modality]);
+
+  useEffect(() => () => {
+    if (clientAudioUrl) URL.revokeObjectURL(clientAudioUrl);
+  }, [clientAudioUrl]);
 
   const clientName = scenario?.client_name ?? "the client";
   const studentCount = messages.filter((m) => m.speaker === "student").length;
+
+  const handleSendAudio = async (audio: Blob) => {
+    if (!session || isLoading) return;
+    setIsLoading(true);
+    setError(null);
+    setEndWarning(null);
+    try {
+      const result = await sendAudioMessage(session.id, audio);
+      const studentMessage: ChatMessage = {
+        id: `local_${Date.now()}`,
+        speaker: "student",
+        content: result.transcript,
+        sequence_number: (messages[messages.length - 1]?.sequence_number ?? 0) + 1,
+        created_at: new Date().toISOString(),
+      };
+      setMessages((prev) => [...prev, studentMessage, result.message]);
+      setClientAudioUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return base64ToObjectUrl(result.audio_base64, result.audio_mime_type);
+      });
+    } catch {
+      setError(`${clientName} could not respond to your recording. Please try again.`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleSend = async (text: string) => {
     if (!session || isLoading) return;
@@ -133,6 +178,10 @@ export default function SimulationChatPage() {
                 <dt className="text-slate-500">Difficulty</dt>
                 <dd className="font-medium text-slate-800">{scenario?.difficulty ?? "\u2014"}</dd>
               </div>
+              <div className="flex justify-between">
+                <dt className="text-slate-500">Mode</dt>
+                <dd className="font-medium text-slate-800">{MODALITY_LABELS[modality]}</dd>
+              </div>
             </dl>
             <p className="mt-4 text-sm font-medium text-slate-600">Skills being practiced</p>
             <ul className="mt-2 flex flex-wrap gap-2">
@@ -180,6 +229,9 @@ export default function SimulationChatPage() {
             error={error}
             onSend={handleSend}
             onEndSession={handleEndSession}
+            modality={modality}
+            onSendAudio={modality === "text" ? undefined : handleSendAudio}
+            clientAudioUrl={clientAudioUrl}
           />
         </section>
       </div>

@@ -4,6 +4,14 @@ export type Role = "student" | "faculty";
 
 export type Speaker = "client" | "student" | "system";
 
+export type Modality = "text" | "audio" | "video";
+
+export const MODALITY_LABELS: Record<Modality, string> = {
+  text: "Text chat",
+  audio: "Voice call",
+  video: "Video call",
+};
+
 export type SessionStatus =
   | "active"
   | "completed"
@@ -65,6 +73,7 @@ export interface SessionDetail {
   scenario_id: string;
   scenario_version_id?: string | null;
   status: SessionStatus;
+  modality?: Modality;
   student_message_count: number;
   started_at: string | null;
   ended_at: string | null;
@@ -79,6 +88,17 @@ export interface SessionDetail {
 export interface SendMessageResult {
   session_id: string;
   message: ChatMessage;
+}
+
+export interface SendAudioMessageResult {
+  session_id: string;
+  /** What the student's spoken turn was transcribed to. */
+  transcript: string;
+  /** The client's text reply. */
+  message: ChatMessage;
+  /** The client reply synthesized to speech (base64-encoded WAV). */
+  audio_base64: string;
+  audio_mime_type: string;
 }
 
 export interface StudentSessionSummary {

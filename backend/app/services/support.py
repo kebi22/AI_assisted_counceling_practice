@@ -49,6 +49,7 @@ async def build_session_detail(
         scenario_id=session.scenario_id,
         scenario_version_id=session.scenario_version_id,
         status=session.status,
+        modality=session.modality,
         student_message_count=session.student_message_count,
         started_at=session.started_at,
         ended_at=session.ended_at,

@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.core.constants import SessionStatus
+from app.core.constants import Modality, SessionStatus
 from app.db.models.simulation_session import SimulationSession
 
 
@@ -19,12 +19,14 @@ async def create_session(
     student_id: uuid.UUID,
     scenario_id: uuid.UUID,
     scenario_version_id: uuid.UUID | None = None,
+    modality: Modality = Modality.TEXT,
 ) -> SimulationSession:
     session = SimulationSession(
         student_id=student_id,
         scenario_id=scenario_id,
         scenario_version_id=scenario_version_id,
         status=SessionStatus.ACTIVE,
+        modality=modality,
         student_message_count=0,
         started_at=datetime.now(timezone.utc),
     )

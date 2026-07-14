@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import DateTime, ForeignKey, Integer, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.core.constants import SessionStatus
-from app.db.base import Base, TimestampMixin, UUIDMixin
+from app.core.constants import Modality, SessionStatus
+from app.db.base import Base, JSONColumn, TimestampMixin, UUIDMixin
 
 if TYPE_CHECKING:
     from app.db.models.evaluation import Evaluation
@@ -34,6 +34,12 @@ class SimulationSession(UUIDMixin, TimestampMixin, Base):
     status: Mapped[SessionStatus] = mapped_column(
         String(32), nullable=False, default=SessionStatus.ACTIVE, index=True
     )
+    modality: Mapped[str] = mapped_column(
+        String(16), nullable=False, default=Modality.TEXT, index=True
+    )
+    # Aggregated nonverbal metrics (video mode); computed client-side via MediaPipe
+    # and stored as a summary, never raw video. Null for text/audio sessions.
+    nonverbal_summary: Mapped[dict[str, Any] | None] = mapped_column(JSONColumn, nullable=True)
     student_message_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

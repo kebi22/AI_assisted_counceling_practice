@@ -31,6 +31,19 @@ class Speaker(StrEnum):
     SYSTEM = "system"
 
 
+class Modality(StrEnum):
+    """Interaction modality for a scenario/session.
+
+    The deterministic turn pipeline always operates on text. ``AUDIO`` and
+    ``VIDEO`` add speech and nonverbal I/O layers around that same text core;
+    they never bypass the state/disclosure engine.
+    """
+
+    TEXT = "text"
+    AUDIO = "audio"
+    VIDEO = "video"
+
+
 class ReviewStatus(StrEnum):
     PENDING = "pending"
     REVIEWED = "reviewed"

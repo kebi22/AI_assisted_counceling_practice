@@ -1,0 +1,26 @@
+# Dev override (audio-video branch): hot-reload backend code without rebuilds.
+# Docker Compose merges this on top of docker-compose.yml automatically.
+# The host `backend/` dir is mounted into the container and uvicorn runs with
+# --reload, so Python changes take effect on save. Migrations + seed still run.
+services:
+  api:
+    # Allow the audio-video frontend (Vite falls back to 5174 when the
+    # text-mode app already holds 5173). Overrides the base compose value.
+    environment:
+      CORS_ORIGINS: http://localhost:5173,http://localhost:5174,http://localhost:3000
+      # Use Vertex AI (same provider/creds as text mode) for STT + TTS.
+      AI_PROVIDER: vertex_ai
+      GOOGLE_CLOUD_PROJECT: groupkac
+      GOOGLE_CLOUD_LOCATION: global
+      GOOGLE_APPLICATION_CREDENTIALS: /gcloud/application_default_credentials.json
+    volumes:
+      - .:/app
+      # Mount host gcloud ADC so the container can authenticate to Vertex.
+      - ${HOME}/.config/gcloud:/gcloud:ro
+    command:
+      - sh
+      - -c
+      - >
+        alembic upgrade head &&
+        python -m scripts.seed_database &&
+        uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload

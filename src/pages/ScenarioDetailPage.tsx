@@ -3,7 +3,14 @@ import { Link, useParams } from "react-router-dom";
 import Layout from "../components/Layout";
 import LoadingSpinner from "../components/LoadingSpinner";
 import { getScenario } from "../api/client";
-import type { ScenarioDetail } from "../types";
+import type { Modality, ScenarioDetail } from "../types";
+import { MODALITY_LABELS } from "../types";
+
+const MODALITY_OPTIONS: { value: Modality; hint: string }[] = [
+  { value: "text", hint: "Type your responses in a chat window." },
+  { value: "audio", hint: "Speak your responses; the client replies out loud." },
+  { value: "video", hint: "Speak with your webcam on for nonverbal feedback." },
+];
 
 const PRACTICE_DISCLAIMER =
   "This is a practice simulation. AI-generated feedback is for learning support and should not be treated as a final clinical evaluation.";
@@ -12,6 +19,7 @@ export default function ScenarioDetailPage() {
   const { scenarioId } = useParams<{ scenarioId: string }>();
   const [scenario, setScenario] = useState<ScenarioDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [modality, setModality] = useState<Modality>("text");
 
   useEffect(() => {
     if (!scenarioId) return;
@@ -97,6 +105,35 @@ export default function ScenarioDetailPage() {
             </section>
           )}
 
+          <section>
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+              Practice Mode
+            </h2>
+            <div className="mt-2 grid gap-2 sm:grid-cols-3">
+              {MODALITY_OPTIONS.map((option) => {
+                const selected = modality === option.value;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setModality(option.value)}
+                    aria-pressed={selected}
+                    className={
+                      selected
+                        ? "rounded-lg border-2 border-navy-600 bg-navy-50 p-3 text-left"
+                        : "rounded-lg border border-slate-300 p-3 text-left hover:border-navy-400"
+                    }
+                  >
+                    <span className="block text-sm font-medium text-navy-700">
+                      {MODALITY_LABELS[option.value]}
+                    </span>
+                    <span className="mt-1 block text-xs text-slate-500">{option.hint}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+
           <section className="rounded-lg bg-amber-50 p-4 ring-1 ring-amber-200">
             <h2 className="text-sm font-semibold text-amber-800">Important Note</h2>
             <p className="mt-1 text-sm text-amber-900">{PRACTICE_DISCLAIMER}</p>
@@ -105,7 +142,7 @@ export default function ScenarioDetailPage() {
 
         <div className="mt-6 flex flex-col gap-3 sm:flex-row">
           <Link
-            to={`/student/simulation/${scenario.id}`}
+            to={`/student/simulation/${scenario.id}?mode=${modality}`}
             className="rounded-lg bg-navy-700 px-6 py-3 text-center text-sm font-medium text-white hover:bg-navy-600"
           >
             Begin Simulation

@@ -2,11 +2,12 @@
 
 import uuid
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, File, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import get_current_student, get_db
 from app.core.security import CurrentUser
+from app.schemas.audio import SendAudioMessageResponse
 from app.schemas.message import MessageCreate, SendMessageResponse
 from app.schemas.session import (
     SessionCreate,
@@ -24,7 +25,9 @@ async def create_session(
     db: AsyncSession = Depends(get_db),
     student: CurrentUser = Depends(get_current_student),
 ) -> SessionDetailResponse:
-    return await session_service.start_session(db, student, payload.scenario_id)
+    return await session_service.start_session(
+        db, student, payload.scenario_id, payload.modality
+    )
 
 
 @router.get("", response_model=list[StudentSessionSummary])
@@ -57,6 +60,28 @@ async def send_message(
 ) -> SendMessageResponse:
     return await session_service.send_student_message(
         db, student, session_id, payload.content
+    )
+
+
+@router.post(
+    "/{session_id}/audio-messages",
+    response_model=SendAudioMessageResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def send_audio_message(
+    session_id: uuid.UUID,
+    audio: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    student: CurrentUser = Depends(get_current_student),
+) -> SendAudioMessageResponse:
+    """Spoken student turn: audio in -> STT -> text pipeline -> TTS reply out."""
+    audio_bytes = await audio.read()
+    return await session_service.send_student_audio_message(
+        db,
+        student,
+        session_id,
+        audio_bytes=audio_bytes,
+        mime_type=audio.content_type or "audio/webm",
     )
 
 

@@ -5,7 +5,7 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
-from app.core.constants import SessionStatus
+from app.core.constants import Modality, SessionStatus
 from app.schemas.common import ORMModel
 from app.schemas.evaluation import EvaluationResponse
 from app.schemas.message import MessageResponse
@@ -13,6 +13,7 @@ from app.schemas.message import MessageResponse
 
 class SessionCreate(BaseModel):
     scenario_id: uuid.UUID
+    modality: Modality = Modality.TEXT
 
 
 class SessionResponse(ORMModel):
@@ -21,6 +22,7 @@ class SessionResponse(ORMModel):
     scenario_id: uuid.UUID
     scenario_version_id: uuid.UUID | None = None
     status: SessionStatus
+    modality: Modality = Modality.TEXT
     student_message_count: int
     started_at: datetime | None
     ended_at: datetime | None
