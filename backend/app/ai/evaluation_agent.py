@@ -33,6 +33,7 @@ class EvaluationAgent:
         learning_objectives: list[Any] | None = None,
         state_history: list[Any] | None = None,
         simulation_fidelity: dict[str, Any] | None = None,
+        nonverbal_summary: dict[str, Any] | None = None,
         session_id: str | None = None,
     ) -> EvaluationResult:
         """Return a validated ``EvaluationResult`` for the transcript."""
@@ -43,6 +44,7 @@ class EvaluationAgent:
             learning_objectives=learning_objectives or [],
             state_history=state_history or [],
             simulation_fidelity=simulation_fidelity or {},
+            nonverbal_summary=nonverbal_summary,
         )
         try:
             result = await self._client.generate_structured(
@@ -143,7 +145,22 @@ class EvaluationAgent:
         learning_objectives: list[Any],
         state_history: list[Any],
         simulation_fidelity: dict[str, Any] | None = None,
+        nonverbal_summary: dict[str, Any] | None = None,
     ) -> str:
+        nonverbal_section = ""
+        if nonverbal_summary:
+            nonverbal_section = (
+                "This was a VIDEO session. The following aggregated nonverbal metrics "
+                "were measured from the student's webcam during the session (ratios are "
+                "0-1 fractions of sampled time). Use them to add a specialized analysis "
+                "under specialized_analyses.nonverbal_communication with: a short summary "
+                "of the student's nonverbal attending behavior (presence, camera-facing "
+                "attention, expressiveness), one or two strengths, and one or two concrete "
+                "suggestions. Interpret the metrics cautiously as proxies; do NOT change "
+                "rubric scores based on them unless a rubric criterion explicitly covers "
+                "nonverbal or attending behavior.\n"
+                f"Nonverbal metrics:\n{json.dumps(nonverbal_summary, indent=2)}\n\n"
+            )
         return (
             "Evaluate the following counseling practice transcript using the provided "
             "scenario rubric, learning objectives, and client-state history. Score each "
@@ -165,6 +182,7 @@ class EvaluationAgent:
             "adherence to its state machine. Do not use it to reward or penalize the student's "
             "competency score; report it separately under specialized_analyses if useful.\n"
             f"Simulation fidelity:\n{json.dumps(simulation_fidelity or {}, indent=2)}\n\n"
+            f"{nonverbal_section}"
             f"Transcript:\n{transcript}\n"
         )
 

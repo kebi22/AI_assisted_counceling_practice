@@ -126,6 +126,7 @@ class EvaluationService:
                 learning_objectives=learning_objectives,
                 state_history=state_history,
                 simulation_fidelity=simulation_fidelity,
+                nonverbal_summary=session.nonverbal_summary,
                 session_id=str(session.id),
             )
         except Exception:

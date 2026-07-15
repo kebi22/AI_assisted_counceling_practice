@@ -101,6 +101,27 @@ export interface SendAudioMessageResult {
   audio_mime_type: string;
 }
 
+/**
+ * Aggregated nonverbal metrics for a video session, computed entirely in the
+ * browser via MediaPipe. Ratios are 0-1 fractions of sampled time. Only this
+ * summary is sent to the backend; raw video never leaves the browser.
+ */
+export interface NonverbalSummary {
+  source: string;
+  duration_seconds: number;
+  sampled_frames: number;
+  /** Fraction of samples where the student's face was visible. */
+  face_presence_ratio: number;
+  /** Fraction of face-visible samples with head oriented toward the camera. */
+  camera_facing_ratio: number;
+  /** Fraction of face-visible samples showing a smile. */
+  smile_ratio: number;
+  /** Mean facial expressiveness (0-1) across face-visible samples. */
+  average_expressiveness: number;
+  /** Mean absolute head rotation (degrees) as a restlessness proxy. */
+  average_head_movement_deg: number;
+}
+
 export interface StudentSessionSummary {
   session_id: string;
   scenario_title: string;

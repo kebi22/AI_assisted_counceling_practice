@@ -10,6 +10,7 @@ from app.core.security import CurrentUser
 from app.schemas.audio import SendAudioMessageResponse
 from app.schemas.message import MessageCreate, SendMessageResponse
 from app.schemas.session import (
+    SessionCompleteRequest,
     SessionCreate,
     SessionDetailResponse,
     StudentSessionSummary,
@@ -88,7 +89,14 @@ async def send_audio_message(
 @router.post("/{session_id}/complete", response_model=SessionDetailResponse)
 async def complete_session(
     session_id: uuid.UUID,
+    payload: SessionCompleteRequest | None = None,
     db: AsyncSession = Depends(get_db),
     student: CurrentUser = Depends(get_current_student),
 ) -> SessionDetailResponse:
-    return await session_service.complete_session(db, student, session_id)
+    """Complete a session; video sessions may attach a nonverbal metrics summary."""
+    return await session_service.complete_session(
+        db,
+        student,
+        session_id,
+        nonverbal_summary=payload.nonverbal_summary if payload else None,
+    )

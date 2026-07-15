@@ -264,8 +264,15 @@ class SessionService:
         db: AsyncSession,
         student: CurrentUser,
         session_id: uuid.UUID,
+        nonverbal_summary: dict | None = None,
     ) -> SessionDetailResponse:
-        """Mark an active session as completed."""
+        """Mark an active session as completed.
+
+        For video sessions the frontend attaches an aggregated nonverbal
+        metrics summary (computed in-browser via MediaPipe); it is stored on
+        the session and later fed to the evaluator. Raw video never reaches
+        the server.
+        """
         student_row = await resolve_user(db, student)
         session = await session_crud.get_session_with_messages(db, session_id)
         self._require_owned_session(session, student_row.id)
@@ -273,6 +280,13 @@ class SessionService:
 
         if session.status not in (SessionStatus.ACTIVE,):
             raise SessionStateError("Only an active session can be completed.")
+
+        if nonverbal_summary is not None:
+            if session.modality != Modality.VIDEO:
+                raise ValidationError(
+                    "Nonverbal metrics are only accepted for video sessions."
+                )
+            await session_crud.set_nonverbal_summary(db, session, nonverbal_summary)
 
         await session_crud.update_session_status(
             db, session, SessionStatus.COMPLETED, set_ended_at=True

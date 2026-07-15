@@ -3,6 +3,7 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import Layout from "../components/Layout";
 import ChatWindow from "../components/ChatWindow";
 import LoadingSpinner from "../components/LoadingSpinner";
+import WebcamMonitor from "../components/WebcamMonitor";
 import {
   completeSession,
   evaluateSession,
@@ -11,7 +12,13 @@ import {
   sendMessage,
   startSession,
 } from "../api/client";
-import type { ChatMessage, Modality, ScenarioDetail, SessionDetail } from "../types";
+import type {
+  ChatMessage,
+  Modality,
+  NonverbalSummary,
+  ScenarioDetail,
+  SessionDetail,
+} from "../types";
 import { MIN_STUDENT_MESSAGES, MODALITY_LABELS } from "../types";
 
 function base64ToObjectUrl(base64: string, mimeType: string): string {
@@ -39,6 +46,8 @@ export default function SimulationChatPage() {
   const [endWarning, setEndWarning] = useState<string | null>(null);
   const [clientAudioUrl, setClientAudioUrl] = useState<string | null>(null);
   const startedRef = useRef(false);
+  // Latest aggregated webcam metrics (video mode); submitted on session end.
+  const nonverbalRef = useRef<NonverbalSummary | null>(null);
 
   useEffect(() => {
     if (!scenarioId || startedRef.current) return;
@@ -124,7 +133,10 @@ export default function SimulationChatPage() {
     setIsEvaluating(true);
     setError(null);
     try {
-      await completeSession(session.id);
+      await completeSession(
+        session.id,
+        modality === "video" ? (nonverbalRef.current ?? undefined) : undefined,
+      );
       await evaluateSession(session.id);
       navigate(`/student/feedback/${session.id}`);
     } catch {
@@ -208,6 +220,14 @@ export default function SimulationChatPage() {
               />
             </div>
           </div>
+
+          {modality === "video" && (
+            <WebcamMonitor
+              onSummaryChange={(summary) => {
+                nonverbalRef.current = summary;
+              }}
+            />
+          )}
 
           {scenario && (
             <div className="rounded-xl bg-navy-50 p-5 text-sm text-navy-800 ring-1 ring-navy-100">

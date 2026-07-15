@@ -104,3 +104,13 @@ async def increment_student_message_count(
     session.student_message_count += 1
     await db.flush()
     return session
+
+
+async def set_nonverbal_summary(
+    db: AsyncSession,
+    session: SimulationSession,
+    summary: dict,
+) -> SimulationSession:
+    session.nonverbal_summary = summary
+    await db.flush()
+    return session

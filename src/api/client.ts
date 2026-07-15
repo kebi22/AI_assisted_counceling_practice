@@ -14,6 +14,7 @@ import type {
   ScenarioPublishResponse,
   ScenarioSummary,
   ScenarioTemplate,
+  NonverbalSummary,
   ScenarioTestMessageResponse,
   SendAudioMessageResult,
   SendMessageResult,
@@ -151,8 +152,14 @@ export async function sendAudioMessage(
   return (await response.json()) as SendAudioMessageResult;
 }
 
-export function completeSession(sessionId: string): Promise<SessionDetail> {
-  return request<SessionDetail>(`/sessions/${sessionId}/complete`, { method: "POST" });
+export function completeSession(
+  sessionId: string,
+  nonverbalSummary?: NonverbalSummary,
+): Promise<SessionDetail> {
+  return request<SessionDetail>(`/sessions/${sessionId}/complete`, {
+    method: "POST",
+    body: nonverbalSummary ? { nonverbal_summary: nonverbalSummary } : undefined,
+  });
 }
 
 // --- Evaluations -----------------------------------------------------------

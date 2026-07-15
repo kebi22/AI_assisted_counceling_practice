@@ -2,6 +2,7 @@
 
 import uuid
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -14,6 +15,17 @@ from app.schemas.message import MessageResponse
 class SessionCreate(BaseModel):
     scenario_id: uuid.UUID
     modality: Modality = Modality.TEXT
+
+
+class SessionCompleteRequest(BaseModel):
+    """Optional payload sent when a student ends a session.
+
+    ``nonverbal_summary`` carries aggregated nonverbal metrics computed
+    client-side (MediaPipe) during a video session. Raw video never reaches
+    the server; only this summary is persisted.
+    """
+
+    nonverbal_summary: dict[str, Any] | None = None
 
 
 class SessionResponse(ORMModel):
