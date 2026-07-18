@@ -353,7 +353,7 @@ async def main() -> None:
     assert not gate["satisfied"]
     assert gate["unresolved_beat_keys"] == ["time_management"]
     dependent = StateTransitionService._eligible_progression_beats(
-        MODULE1_PROGRESSION_BEATS,
+        cue_scenario.progression_beats,
         state=missed_state,
         detected=CounselorBehaviorDetection(reflection_of_feeling=True),
         cue_analysis=missed,
@@ -390,6 +390,33 @@ async def main() -> None:
     assert repaired_patch is not None
     assert repaired_patch["resolution_status"] == "repaired"
     assert missed_state.beat_states[-1]["requires_repair"] is False
+    repaired_gate = StateTransitionService._stage_gate_status(
+        scenario=cue_scenario,
+        state=missed_state,
+        target_stage="mid",
+    )
+    assert not repaired_gate["satisfied"]
+    assert {"beat_key": "time_management", "cue": "Frustration"} in repaired_gate[
+        "missing_required_cues"
+    ]
+    missed_state.emotional_cues.extend(
+        [
+            {
+                "cue": "Stress",
+                "beat_key": "work_stress",
+                "status": "accurately_reflected",
+                "presented_on_turn": 1,
+                "responded_on_turn": 2,
+            },
+            {
+                "cue": "Frustration",
+                "beat_key": "time_management",
+                "status": "accurately_reflected",
+                "presented_on_turn": 5,
+                "responded_on_turn": 6,
+            },
+        ]
+    )
     repaired_gate = StateTransitionService._stage_gate_status(
         scenario=cue_scenario,
         state=missed_state,

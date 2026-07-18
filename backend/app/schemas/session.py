@@ -47,6 +47,9 @@ class SessionDetailResponse(SessionResponse):
     student_name: str
     messages: list[MessageResponse]
     evaluation: EvaluationResponse | None = None
+    # Populated for audio/video sessions so the client can speak the opening line.
+    opening_audio_base64: str | None = None
+    opening_audio_mime_type: str | None = None
 
 
 class StudentSessionSummary(BaseModel):

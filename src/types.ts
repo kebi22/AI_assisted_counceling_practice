@@ -83,6 +83,9 @@ export interface SessionDetail {
   student_name: string;
   messages: ChatMessage[];
   evaluation: Evaluation | null;
+  /** Opening client line synthesized for audio/video sessions. */
+  opening_audio_base64?: string | null;
+  opening_audio_mime_type?: string | null;
 }
 
 export interface SendMessageResult {

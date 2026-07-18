@@ -142,6 +142,7 @@ class StateTransitionService:
             engagement_level=state.engagement_level,
             scenario=scenario,
             state=state,
+            student_turn_count=student_turn_count,
         )
         state.disclosure_stage = self._disclosure_stage(state.session_stage)
         self._update_depth_and_rupture(
@@ -267,6 +268,7 @@ class StateTransitionService:
         engagement_level: int,
         scenario: ScenarioAuthoringData,
         state: SessionState,
+        student_turn_count: int,
     ) -> tuple[str, dict[str, Any]]:
         target = (
             "mid" if current_stage == "early" else "later" if current_stage == "mid" else "later"
@@ -275,6 +277,7 @@ class StateTransitionService:
             scenario=scenario,
             state=state,
             target_stage=target,
+            student_turn_count=student_turn_count,
         )
         required_level = 3 if current_stage == "early" else 4
         milestone_ready = (
@@ -295,21 +298,30 @@ class StateTransitionService:
         scenario: ScenarioAuthoringData,
         state: SessionState,
         target_stage: str,
+        student_turn_count: int | None = None,
     ) -> dict[str, Any]:
         target_rank = STAGE_ORDER.get(target_stage, 1)
-        required = [
-            beat.key
+        required_beats = [
+            beat
             for beat in scenario.progression_beats
             if beat.required_for_completion
             and STAGE_ORDER.get(beat.session_stage, 1) < target_rank
         ]
+        required = [beat.key for beat in required_beats]
+        minimum_turns = 3 if target_stage == "mid" else 6 if target_stage == "later" else 0
+        turn_ready = student_turn_count is None or student_turn_count >= minimum_turns
         if not required:
             return {
                 "target_stage": target_stage,
-                "satisfied": True,
+                "satisfied": turn_ready,
                 "required_beat_keys": [],
                 "missing_beat_keys": [],
+                "required_cues": [],
+                "missing_required_cues": [],
+                "unaddressed_required_cues": [],
                 "blocking_cues": [],
+                "minimum_turns": minimum_turns,
+                "turn_ready": turn_ready,
                 "legacy_compatible": True,
             }
         revealed = {str(item) for item in state.revealed_information}
@@ -321,6 +333,42 @@ class StateTransitionService:
             if key in revealed
             and StateTransitionService._beat_needs_repair(
                 beat_state_map.get(key)
+            )
+        ]
+        required_cues = [
+            {"beat_key": beat.key, "cue": cue}
+            for beat in required_beats
+            for cue in beat.emotional_cues
+        ]
+        sufficient_statuses = {
+            "acknowledged",
+            "accurately_reflected",
+            "deepened",
+            "repaired",
+        }
+        cue_records = [
+            item
+            for item in state.emotional_cues
+            if isinstance(item, dict) and item.get("beat_key") in required
+        ]
+        missing_required_cues = [
+            item
+            for item in required_cues
+            if not any(
+                str(record.get("cue", "")).casefold() == item["cue"].casefold()
+                and record.get("beat_key") == item["beat_key"]
+                for record in cue_records
+            )
+        ]
+        unaddressed_required_cues = [
+            item
+            for item in required_cues
+            if item not in missing_required_cues
+            and not any(
+                str(record.get("cue", "")).casefold() == item["cue"].casefold()
+                and record.get("beat_key") == item["beat_key"]
+                and record.get("status") in sufficient_statuses
+                for record in cue_records
             )
         ]
         blocking = [
@@ -336,11 +384,23 @@ class StateTransitionService:
         ]
         result = {
             "target_stage": target_stage,
-            "satisfied": not missing and not blocking and not unresolved_beats,
+            "satisfied": (
+                turn_ready
+                and not missing
+                and not missing_required_cues
+                and not unaddressed_required_cues
+                and not blocking
+                and not unresolved_beats
+            ),
             "required_beat_keys": required,
             "missing_beat_keys": missing,
             "unresolved_beat_keys": unresolved_beats,
+            "required_cues": required_cues,
+            "missing_required_cues": missing_required_cues,
+            "unaddressed_required_cues": unaddressed_required_cues,
             "blocking_cues": blocking,
+            "minimum_turns": minimum_turns,
+            "turn_ready": turn_ready,
             "legacy_compatible": False,
         }
         return result

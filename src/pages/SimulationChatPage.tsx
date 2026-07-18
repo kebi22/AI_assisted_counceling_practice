@@ -3,7 +3,8 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import Layout from "../components/Layout";
 import ChatWindow from "../components/ChatWindow";
 import LoadingSpinner from "../components/LoadingSpinner";
-import WebcamMonitor from "../components/WebcamMonitor";
+import VideoSessionView from "../components/VideoSessionView";
+import VoiceSessionView from "../components/VoiceSessionView";
 import {
   completeSession,
   evaluateSession,
@@ -46,7 +47,6 @@ export default function SimulationChatPage() {
   const [endWarning, setEndWarning] = useState<string | null>(null);
   const [clientAudioUrl, setClientAudioUrl] = useState<string | null>(null);
   const startedRef = useRef(false);
-  // Latest aggregated webcam metrics (video mode); submitted on session end.
   const nonverbalRef = useRef<NonverbalSummary | null>(null);
 
   useEffect(() => {
@@ -59,6 +59,14 @@ export default function SimulationChatPage() {
         const newSession = await startSession(selectedScenario.id, modality);
         setSession(newSession);
         setMessages(newSession.messages);
+        if (newSession.opening_audio_base64 && newSession.opening_audio_mime_type) {
+          setClientAudioUrl(
+            base64ToObjectUrl(
+              newSession.opening_audio_base64,
+              newSession.opening_audio_mime_type,
+            ),
+          );
+        }
       } catch {
         setError("The simulator service is currently unavailable.");
       }
@@ -71,6 +79,7 @@ export default function SimulationChatPage() {
 
   const clientName = scenario?.client_name ?? "the client";
   const studentCount = messages.filter((m) => m.speaker === "student").length;
+  const scenarioTitle = scenario?.title ?? session?.scenario_title ?? "Simulation";
 
   const handleSendAudio = async (audio: Blob) => {
     if (!session || isLoading) return;
@@ -147,12 +156,18 @@ export default function SimulationChatPage() {
 
   if (!session) {
     return (
-      <Layout>
+      <Layout wide={modality !== "text"}>
         <div className="flex justify-center py-20">
           {error ? (
             <p className="text-red-600">{error}</p>
           ) : (
-            <LoadingSpinner label="Starting your session..." />
+            <LoadingSpinner
+              label={
+                modality === "text"
+                  ? "Starting your session..."
+                  : "Starting your call and preparing Sara's voice..."
+              }
+            />
           )}
         </div>
       </Layout>
@@ -161,7 +176,7 @@ export default function SimulationChatPage() {
 
   if (isEvaluating) {
     return (
-      <Layout>
+      <Layout wide={modality !== "text"}>
         <div className="flex flex-col items-center gap-4 py-20">
           <LoadingSpinner label="Generating your feedback report..." />
           <p className="text-sm text-slate-500">This usually takes a few seconds.</p>
@@ -174,13 +189,60 @@ export default function SimulationChatPage() {
     ? ((scenario.client_profile as { skills?: unknown }).skills as string[] | undefined) ??
       Object.values(scenario.rubric_json)
     : [];
+  const studentGoal = scenario?.student_goal;
 
+  if (modality === "audio") {
+    return (
+      <Layout wide>
+        <VoiceSessionView
+          messages={messages}
+          clientName={clientName}
+          scenarioTitle={scenarioTitle}
+          studentCount={studentCount}
+          studentGoal={studentGoal}
+          isLoading={isLoading}
+          error={error}
+          endWarning={endWarning}
+          clientAudioUrl={clientAudioUrl}
+          onSend={handleSend}
+          onSendAudio={handleSendAudio}
+          onEndSession={handleEndSession}
+        />
+      </Layout>
+    );
+  }
+
+  if (modality === "video") {
+    return (
+      <Layout wide>
+        <VideoSessionView
+          messages={messages}
+          clientName={clientName}
+          scenarioTitle={scenarioTitle}
+          studentCount={studentCount}
+          studentGoal={studentGoal}
+          isLoading={isLoading}
+          error={error}
+          endWarning={endWarning}
+          clientAudioUrl={clientAudioUrl}
+          onSend={handleSend}
+          onSendAudio={handleSendAudio}
+          onEndSession={handleEndSession}
+          onNonverbalSummary={(summary) => {
+            nonverbalRef.current = summary;
+          }}
+        />
+      </Layout>
+    );
+  }
+
+  // Text mode — unchanged sidebar + chat layout
   return (
     <Layout>
       <div className="grid gap-6 lg:grid-cols-[320px_1fr]">
         <aside className="space-y-4">
           <div className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
-            <h2 className="font-semibold text-navy-700">{scenario?.title ?? session.scenario_title}</h2>
+            <h2 className="font-semibold text-navy-700">{scenarioTitle}</h2>
             <dl className="mt-3 space-y-1 text-sm">
               <div className="flex justify-between">
                 <dt className="text-slate-500">Client</dt>
@@ -221,17 +283,9 @@ export default function SimulationChatPage() {
             </div>
           </div>
 
-          {modality === "video" && (
-            <WebcamMonitor
-              onSummaryChange={(summary) => {
-                nonverbalRef.current = summary;
-              }}
-            />
-          )}
-
-          {scenario && (
+          {studentGoal && (
             <div className="rounded-xl bg-navy-50 p-5 text-sm text-navy-800 ring-1 ring-navy-100">
-              {scenario.student_goal}
+              {studentGoal}
             </div>
           )}
         </aside>
@@ -249,9 +303,6 @@ export default function SimulationChatPage() {
             error={error}
             onSend={handleSend}
             onEndSession={handleEndSession}
-            modality={modality}
-            onSendAudio={modality === "text" ? undefined : handleSendAudio}
-            clientAudioUrl={clientAudioUrl}
           />
         </section>
       </div>

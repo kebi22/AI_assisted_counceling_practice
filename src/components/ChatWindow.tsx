@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import type { ChatMessage, Modality } from "../types";
+import type { ChatMessage } from "../types";
 import MessageBubble from "./MessageBubble";
-import VoiceRecorder from "./VoiceRecorder";
 
 interface Props {
   messages: ChatMessage[];
@@ -10,14 +9,9 @@ interface Props {
   error: string | null;
   onSend: (text: string) => void;
   onEndSession: () => void;
-  /** Interaction mode. Voice controls appear for audio/video. Defaults to text. */
-  modality?: Modality;
-  /** Called with a recorded audio turn (audio/video modes). */
-  onSendAudio?: (audio: Blob) => void;
-  /** Object URL of the client's latest spoken reply, auto-played when set. */
-  clientAudioUrl?: string | null;
 }
 
+/** Text-mode chat window (sidebar + transcript layout lives in SimulationChatPage). */
 export default function ChatWindow({
   messages,
   clientName,
@@ -25,26 +19,13 @@ export default function ChatWindow({
   error,
   onSend,
   onEndSession,
-  modality = "text",
-  onSendAudio,
-  clientAudioUrl,
 }: Props) {
   const [input, setInput] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
-  const audioRef = useRef<HTMLAudioElement>(null);
-  const voiceEnabled = modality !== "text" && Boolean(onSendAudio);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, isLoading]);
-
-  useEffect(() => {
-    if (clientAudioUrl && audioRef.current) {
-      audioRef.current.play().catch(() => {
-        // Autoplay may be blocked until the user interacts; the replay button covers this.
-      });
-    }
-  }, [clientAudioUrl]);
 
   const handleSend = () => {
     const text = input.trim();
@@ -67,20 +48,7 @@ export default function ChatWindow({
         {error && <p className="text-sm text-red-600">{error}</p>}
       </div>
 
-      {clientAudioUrl && (
-        <div className="flex items-center gap-3 border-t border-slate-200 px-3 py-2">
-          <span className="text-xs font-medium text-slate-500">{clientName}&apos;s voice</span>
-          <audio ref={audioRef} src={clientAudioUrl} controls className="h-8 flex-1" />
-        </div>
-      )}
-
       <div className="border-t border-slate-200 p-3">
-        {voiceEnabled && (
-          <div className="mb-3 flex flex-col items-center gap-1 rounded-lg bg-slate-50 py-3 ring-1 ring-slate-100">
-            <VoiceRecorder onRecorded={(blob) => onSendAudio?.(blob)} disabled={isLoading} />
-            <p className="text-xs text-slate-400">or type your response below</p>
-          </div>
-        )}
         <label htmlFor="chat-input" className="mb-1 block text-xs font-medium text-slate-600">
           Your response
         </label>

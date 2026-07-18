@@ -3,24 +3,19 @@ import { FaceLandmarker, FilesetResolver } from "@mediapipe/tasks-vision";
 import type { NonverbalSummary } from "../types";
 
 interface Props {
-  /**
-   * Called with the latest aggregated metrics (about once per second).
-   * The parent keeps the most recent summary and submits it when the
-   * session is completed. Raw video never leaves the browser.
-   */
   onSummaryChange: (summary: NonverbalSummary) => void;
+  /** pip = overlay tile on the video stage; panel = standalone card (unused in new layouts) */
+  variant?: "pip" | "panel";
 }
 
 type TrackerState = "starting" | "tracking" | "camera-only" | "error";
 
-// Keep the wasm runtime version in lockstep with the npm package version.
 const WASM_CDN_URL =
   "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/wasm";
 const FACE_MODEL_URL =
   "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task";
 
 const SAMPLE_INTERVAL_MS = 250;
-// Head-orientation thresholds (degrees) for the "facing the camera" proxy.
 const FACING_MAX_YAW_DEG = 20;
 const FACING_MAX_PITCH_DEG = 15;
 const SMILE_THRESHOLD = 0.25;
@@ -57,11 +52,7 @@ function emptyAccumulator(): Accumulator {
   };
 }
 
-/** Extract approximate head yaw/pitch (degrees) from a column-major 4x4 matrix. */
-function headAngles(matrixData: Float32Array | number[]): {
-  yaw: number;
-  pitch: number;
-} {
+function headAngles(matrixData: Float32Array | number[]): { yaw: number; pitch: number } {
   const d = matrixData;
   const clamp = (v: number) => Math.max(-1, Math.min(1, v));
   const yaw = (Math.asin(clamp(-d[2])) * 180) / Math.PI;
@@ -83,14 +74,7 @@ function buildSummary(acc: Accumulator): NonverbalSummary {
   };
 }
 
-/**
- * Webcam pane for video-mode sessions. Streams the student's camera locally
- * and runs MediaPipe FaceLandmarker in the browser (~4 samples/sec) to
- * aggregate nonverbal attending metrics: face presence, camera-facing head
- * orientation, smiling, and expressiveness. Only the aggregated summary is
- * reported upward; no frames or video are transmitted anywhere.
- */
-export default function WebcamMonitor({ onSummaryChange }: Props) {
+export default function WebcamMonitor({ onSummaryChange, variant = "pip" }: Props) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [state, setState] = useState<TrackerState>("starting");
   const [error, setError] = useState<string | null>(null);
@@ -106,15 +90,14 @@ export default function WebcamMonitor({ onSummaryChange }: Props) {
     const acc = emptyAccumulator();
 
     (async () => {
-      // 1. Camera first: a preview without tracking is still useful.
       try {
         stream = await navigator.mediaDevices.getUserMedia({
-          video: { width: 480, height: 360, facingMode: "user" },
+          video: { width: 640, height: 480, facingMode: "user" },
         });
       } catch {
         if (!cancelled) {
           setState("error");
-          setError("Camera access was denied. Check your browser permissions.");
+          setError("Camera access denied");
         }
         return;
       }
@@ -125,7 +108,6 @@ export default function WebcamMonitor({ onSummaryChange }: Props) {
       videoRef.current.srcObject = stream;
       await videoRef.current.play().catch(() => undefined);
 
-      // 2. Load the face landmark model (network fetch; may fail offline).
       try {
         const fileset = await FilesetResolver.forVisionTasks(WASM_CDN_URL);
         landmarker = await FaceLandmarker.createFromOptions(fileset, {
@@ -138,7 +120,7 @@ export default function WebcamMonitor({ onSummaryChange }: Props) {
       } catch {
         if (!cancelled) {
           setState("camera-only");
-          setError("Nonverbal tracking could not load; the camera preview still works.");
+          setError("Tracking unavailable");
         }
         return;
       }
@@ -149,7 +131,6 @@ export default function WebcamMonitor({ onSummaryChange }: Props) {
       setState("tracking");
       acc.startedAt = Date.now();
 
-      // 3. Sample loop: detect, accumulate, and surface the running summary.
       intervalId = window.setInterval(() => {
         const video = videoRef.current;
         if (!video || video.readyState < 2 || !landmarker) return;
@@ -184,7 +165,6 @@ export default function WebcamMonitor({ onSummaryChange }: Props) {
           acc.expressivenessSum += expressiveness;
         }
 
-        // Report roughly once per second.
         if (acc.samples % 4 === 0) {
           const summary = buildSummary(acc);
           setLiveSummary(summary);
@@ -201,14 +181,50 @@ export default function WebcamMonitor({ onSummaryChange }: Props) {
     };
   }, []);
 
-  const statusLabel =
-    state === "starting"
-      ? "Starting camera..."
-      : state === "tracking"
-        ? "Camera on \u00b7 nonverbal tracking active"
-        : state === "camera-only"
-          ? "Camera on \u00b7 tracking unavailable"
-          : "Camera unavailable";
+  const trackingActive = state === "tracking";
+  const presencePct = liveSummary ? Math.round(liveSummary.face_presence_ratio * 100) : null;
+
+  if (variant === "pip") {
+    return (
+      <div className="overflow-hidden rounded-xl bg-slate-900 shadow-2xl ring-2 ring-white/20">
+        <div className="relative aspect-[4/3]">
+          <video
+            ref={videoRef}
+            muted
+            playsInline
+            className="h-full w-full object-cover"
+            style={{ transform: "scaleX(-1)" }}
+            aria-label="Your camera (processed locally only)"
+          />
+          {state === "starting" && (
+            <div className="absolute inset-0 flex items-center justify-center bg-slate-900/80 text-xs text-slate-300">
+              Starting camera...
+            </div>
+          )}
+          {state === "error" && (
+            <div className="absolute inset-0 flex items-center justify-center bg-slate-900 p-3 text-center text-xs text-red-300">
+              {error}
+            </div>
+          )}
+          <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent px-2 pb-2 pt-6">
+            <p className="text-[11px] font-medium text-white">You</p>
+            {trackingActive && presencePct !== null && (
+              <p className="text-[10px] text-slate-300">Present {presencePct}%</p>
+            )}
+            {state === "camera-only" && (
+              <p className="text-[10px] text-amber-300">Preview only</p>
+            )}
+          </div>
+          {trackingActive && (
+            <span className="absolute right-2 top-2 flex items-center gap-1 rounded-full bg-black/50 px-2 py-0.5 text-[10px] text-teal-300">
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-teal-400" />
+              Tracking
+            </span>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
@@ -220,29 +236,10 @@ export default function WebcamMonitor({ onSummaryChange }: Props) {
           playsInline
           className="h-40 w-full object-cover"
           style={{ transform: "scaleX(-1)" }}
-          aria-label="Your webcam preview (processed locally, never uploaded)"
+          aria-label="Your webcam preview"
         />
       </div>
-      <p className="mt-2 text-xs text-slate-500" role="status" aria-live="polite">
-        {statusLabel}
-      </p>
-      {error && <p className="mt-1 text-xs text-amber-700">{error}</p>}
-      {state === "tracking" && liveSummary && (
-        <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-slate-600">
-          <div className="flex justify-between">
-            <dt>Present</dt>
-            <dd className="font-medium">{Math.round(liveSummary.face_presence_ratio * 100)}%</dd>
-          </div>
-          <div className="flex justify-between">
-            <dt>Facing camera</dt>
-            <dd className="font-medium">{Math.round(liveSummary.camera_facing_ratio * 100)}%</dd>
-          </div>
-        </dl>
-      )}
-      <p className="mt-2 text-[11px] leading-4 text-slate-400">
-        Video is analyzed on your device only. Only aggregate attending metrics are
-        saved with your session.
-      </p>
+      {error && <p className="mt-2 text-xs text-amber-700">{error}</p>}
     </div>
   );
 }

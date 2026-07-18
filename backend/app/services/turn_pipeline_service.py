@@ -51,6 +51,22 @@ _CUE_FALLBACKS = {
     "self-doubt": "I have started questioning myself more, but I am still hesitant to unpack that fully.",
 }
 
+_BEAT_FALLBACKS = {
+    "emotional_exhaustion": (
+        "I feel drained in a way that is more than just being busy. Even when I "
+        "get through the day, I do not really feel restored."
+    ),
+}
+
+_LOCKED_DISCLOSURE_GUARDRAILS = {
+    "sustainability_doubts": (
+        "Do not mention how long the client can keep going, whether this can "
+        "continue, burnout, being unable to keep doing this, or long-term "
+        "sustainability. Stay with tiredness, depletion, and difficulty feeling "
+        "restored."
+    ),
+}
+
 
 @dataclass(frozen=True)
 class PreparedClientTurn:
@@ -326,11 +342,10 @@ class TurnPipelineService:
             {"attempt": 1, "response": client_text, "validation": validation.model_dump()}
         )
         if not validation.accepted:
-            correction = (
-                prepared.system_prompt
-                + "\n\nGENERATION CORRECTION\n"
-                + "The prior draft crossed a disclosure boundary. Write a different response "
-                + "using only the permitted cue and optional disclosure in the response plan."
+            correction = self._retry_prompt(
+                prepared=prepared,
+                validation=validation,
+                rejected_response=client_text,
             )
             client_text = await self._agent.generate_client_response(
                 scenario_prompt=correction,
@@ -419,6 +434,13 @@ class TurnPipelineService:
         permitted = set(prepared.response_plan.already_revealed_keys)
         if prepared.response_plan.selected_disclosure_key:
             permitted.add(prepared.response_plan.selected_disclosure_key)
+        fallback_revealed_key = TurnPipelineService._fallback_revealed_key(
+            prepared=prepared,
+            validation=validation,
+            generation_attempts=generation_attempts or [],
+        )
+        if fallback_revealed_key:
+            permitted.add(fallback_revealed_key)
         for key in validation.detected_disclosure_keys:
             if key in permitted and key not in revealed:
                 revealed.append(key)
@@ -433,6 +455,20 @@ class TurnPipelineService:
                         "revealed_on_turn": prepared.response_plan.turn,
                     },
                 )
+        if fallback_revealed_key and fallback_revealed_key not in revealed:
+            revealed.append(fallback_revealed_key)
+            state.beat_states = StateTransitionService._upsert_beat_state(
+                state.beat_states or [],
+                {
+                    "beat_key": fallback_revealed_key,
+                    "disclosure_status": "revealed",
+                    "post_disclosure_status": "pending_response",
+                    "resolution_status": "pending_response",
+                    "requires_repair": False,
+                    "revealed_on_turn": prepared.response_plan.turn,
+                    "source": "controlled_fallback",
+                },
+            )
         state.revealed_information = revealed
 
         cue_ledger = list(state.emotional_cues)
@@ -508,11 +544,68 @@ class TurnPipelineService:
 
     @staticmethod
     def _controlled_fallback(plan: ClientResponsePlan) -> str:
+        if plan.selected_disclosure_key in _BEAT_FALLBACKS:
+            return _BEAT_FALLBACKS[plan.selected_disclosure_key]
         cue = plan.active_emotional_cues[0].lower() if plan.active_emotional_cues else ""
         return _CUE_FALLBACKS.get(
             cue,
             "I'm still trying to put that into words. I think I need a little more time before I can say much more about it.",
         )
+
+    @staticmethod
+    def _retry_prompt(
+        *,
+        prepared: PreparedClientTurn,
+        validation: ClientResponseValidation,
+        rejected_response: str,
+    ) -> str:
+        locked_keys = validation.unauthorized_disclosure_keys
+        guardrails = [
+            _LOCKED_DISCLOSURE_GUARDRAILS[key]
+            for key in locked_keys
+            if key in _LOCKED_DISCLOSURE_GUARDRAILS
+        ]
+        selected_content = prepared.response_plan.selected_disclosure_content or (
+            "No new story fact is permitted; stay with the active emotional cue."
+        )
+        permitted_cues = ", ".join(prepared.response_plan.permitted_emotional_cues) or "none"
+        blocked_keys = ", ".join(prepared.response_plan.blocked_disclosure_keys) or "none"
+        guardrail_text = (
+            "\nSpecific locked-boundary guidance:\n- " + "\n- ".join(guardrails)
+            if guardrails
+            else ""
+        )
+        return (
+            prepared.system_prompt
+            + "\n\nGENERATION CORRECTION\n"
+            + "The prior draft crossed a disclosure boundary and was rejected.\n"
+            + f"Rejected draft:\n{rejected_response}\n\n"
+            + "Write a different, natural client response that follows the response plan exactly.\n"
+            + f"Allowed new disclosure: {selected_content}\n"
+            + f"Permitted emotional cues: {permitted_cues}\n"
+            + f"Locked disclosure keys to avoid: {blocked_keys}\n"
+            + guardrail_text
+            + "\nKeep the response emotionally realistic, but do not add future story facts, "
+            + "long-term conclusions, crisis implications, or private meanings that are not "
+            + "explicitly allowed above."
+        )
+
+    @staticmethod
+    def _fallback_revealed_key(
+        *,
+        prepared: PreparedClientTurn,
+        validation: ClientResponseValidation,
+        generation_attempts: list[dict],
+    ) -> str | None:
+        if not validation.accepted or not generation_attempts:
+            return None
+        latest = generation_attempts[-1]
+        if latest.get("source") != "controlled_fallback":
+            return None
+        key = prepared.response_plan.selected_disclosure_key
+        if key and key in _BEAT_FALLBACKS:
+            return key
+        return None
 
 
 turn_pipeline_service = TurnPipelineService()

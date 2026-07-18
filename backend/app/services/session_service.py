@@ -94,6 +94,8 @@ class SessionService:
         )
 
         first_message = scenario.client_profile.get("first_client_message")
+        if not first_message:
+            first_message = scenario.opening_message
         if first_message:
             self._turn_pipeline.initialize_opening_state(
                 state=state,
@@ -112,7 +114,23 @@ class SessionService:
 
         loaded = await session_crud.get_session_with_messages(db, session.id)
         assert loaded is not None
-        return await build_session_detail(db, loaded)
+        detail = await build_session_detail(db, loaded)
+
+        if modality in (Modality.AUDIO, Modality.VIDEO) and first_message:
+            speech = await self._speech.synthesize(
+                text=first_message,
+                session_id=str(session.id),
+            )
+            detail = detail.model_copy(
+                update={
+                    "opening_audio_base64": base64.b64encode(speech.wav_bytes).decode(
+                        "ascii"
+                    ),
+                    "opening_audio_mime_type": "audio/wav",
+                }
+            )
+
+        return detail
 
     async def send_student_message(
         self,
